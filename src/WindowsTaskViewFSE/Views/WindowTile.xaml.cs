@@ -79,7 +79,7 @@ public partial class WindowTile : UserControl
     /// </summary>
     private void RefreshLivePreview()
     {
-        if (!_isLoaded) return;
+        if (!_isLoaded || !IsVisible) return;
         if (DataContext is not WindowTileViewModel vm || vm.Handle == IntPtr.Zero) return;
 
         var hostWindow = Window.GetWindow(this);

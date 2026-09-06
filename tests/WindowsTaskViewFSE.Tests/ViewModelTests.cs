@@ -17,6 +17,7 @@ public class MockThumbnailProvider : IThumbnailProvider
     public int UpdateCallCount { get; private set; }
     public int UnregisterCallCount { get; private set; }
     public Rect LastDestRect { get; private set; }
+    public IntPtr LastRegisterDestinationHwnd { get; private set; }
     public bool FailRegistration { get; set; }
 
     public ImageSource? CaptureWindowThumbnail(IntPtr handle, int width = 480, int height = 270) => null;
@@ -25,6 +26,7 @@ public class MockThumbnailProvider : IThumbnailProvider
     public IntPtr RegisterDwmThumbnail(IntPtr destinationHwnd, IntPtr sourceHwnd)
     {
         RegisterCallCount++;
+        LastRegisterDestinationHwnd = destinationHwnd;
         if (FailRegistration) return IntPtr.Zero;
         return _nextThumbnailId;
     }
@@ -241,6 +243,32 @@ public class ViewModelTests
         Assert.False(vm.HasLivePreview);
         Assert.Equal(1, thumbnailProvider.RegisterCallCount);
         Assert.Equal(0, thumbnailProvider.UpdateCallCount);
+    }
+
+    [Fact]
+    public void WindowTileViewModel_AttachLivePreview_WhenDestinationHwndChanges_ReRegisters()
+    {
+        var thumbnailProvider = new MockThumbnailProvider();
+        var model = new WindowInfo { Handle = new IntPtr(999), Title = "Live App" };
+        var vm = new WindowTileViewModel(model, thumbnailProvider: thumbnailProvider);
+
+        var destHwnd1 = new IntPtr(1);
+        vm.AttachLivePreview(destHwnd1, new Rect(0, 0, 100, 100));
+
+        Assert.True(vm.HasLivePreview);
+        Assert.Equal(1, thumbnailProvider.RegisterCallCount);
+        Assert.Equal(0, thumbnailProvider.UnregisterCallCount);
+
+        // Reparenting to a different host window (e.g. carousel slot moved to another
+        // top-level window) must unregister the stale thumbnail and register a fresh one
+        // against the new destination, not silently keep updating against the old host.
+        var destHwnd2 = new IntPtr(2);
+        vm.AttachLivePreview(destHwnd2, new Rect(0, 0, 100, 100));
+
+        Assert.True(vm.HasLivePreview);
+        Assert.Equal(2, thumbnailProvider.RegisterCallCount);
+        Assert.Equal(1, thumbnailProvider.UnregisterCallCount);
+        Assert.Equal(destHwnd2, thumbnailProvider.LastRegisterDestinationHwnd);
     }
 
     [Fact]

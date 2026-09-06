@@ -15,6 +15,7 @@ public class WindowTileViewModel : ViewModelBase
     private bool _isClosing;
     private int _index;
     private IntPtr _dwmThumbnailId = IntPtr.Zero;
+    private IntPtr _dwmThumbnailDestinationHwnd = IntPtr.Zero;
 
     public WindowInfo Model
     {
@@ -87,17 +88,26 @@ public class WindowTileViewModel : ViewModelBase
     /// <summary>
     /// Registers (if needed) and positions a live DWM window preview for this tile's window,
     /// rendered directly by the compositor into <paramref name="destRect"/> (in <paramref name="destinationHwnd"/>
-    /// client coordinates). Cheap to call repeatedly - only issues a new registration once.
+    /// client coordinates). Cheap to call repeatedly - only issues a new registration once,
+    /// unless <paramref name="destinationHwnd"/> changes (e.g. the tile is reparented to a
+    /// different host window), in which case the thumbnail is re-registered against the new host.
     /// </summary>
     public void AttachLivePreview(IntPtr destinationHwnd, Rect destRect)
     {
         if (_thumbnailProvider == null || Handle == IntPtr.Zero || destinationHwnd == IntPtr.Zero) return;
+
+        if (_dwmThumbnailId != IntPtr.Zero && _dwmThumbnailDestinationHwnd != destinationHwnd)
+        {
+            _thumbnailProvider.UnregisterDwmThumbnail(_dwmThumbnailId);
+            _dwmThumbnailId = IntPtr.Zero;
+        }
 
         if (_dwmThumbnailId == IntPtr.Zero)
         {
             _dwmThumbnailId = _thumbnailProvider.RegisterDwmThumbnail(destinationHwnd, Handle);
             if (_dwmThumbnailId != IntPtr.Zero)
             {
+                _dwmThumbnailDestinationHwnd = destinationHwnd;
                 OnPropertyChanged(nameof(HasLivePreview));
             }
         }
@@ -130,6 +140,7 @@ public class WindowTileViewModel : ViewModelBase
         {
             _thumbnailProvider?.UnregisterDwmThumbnail(_dwmThumbnailId);
             _dwmThumbnailId = IntPtr.Zero;
+            _dwmThumbnailDestinationHwnd = IntPtr.Zero;
             OnPropertyChanged(nameof(HasLivePreview));
         }
     }

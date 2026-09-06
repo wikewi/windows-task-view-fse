@@ -99,7 +99,10 @@ public class MainViewModel : ViewModelBase, IDisposable
 
     /// <summary>
     /// The window shown to the right of center (next window in the circular carousel).
-    /// Null when there are fewer than 2 windows open.
+    /// Null when there are fewer than 2 windows open. With exactly 2 windows open,
+    /// GetTileAtOffset(-1) and GetTileAtOffset(1) both resolve to the same neighboring
+    /// window, so it is only ever shown here (on the right) - <see cref="LeftTile"/> is
+    /// suppressed in that case rather than binding the same instance to both slots.
     /// </summary>
     public WindowTileViewModel? RightTile => GetTileAtOffset(1);
 

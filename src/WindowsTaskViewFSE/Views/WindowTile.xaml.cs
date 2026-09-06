@@ -102,7 +102,15 @@ public partial class WindowTile : UserControl
         double height = PreviewSurface.ActualHeight;
         if (width <= 0 || height <= 0) return;
 
-        var rect = new Rect(topLeft, new Size(width, height));
+        // DwmUpdateThumbnailProperties expects the destination rectangle in physical pixels,
+        // but WPF layout/TranslatePoint operate in device-independent units (DIPs). Convert
+        // using the host window's composition transform so the preview is correctly sized
+        // and positioned at any DPI scale factor.
+        var toDevice = hwndSource.CompositionTarget.TransformToDevice;
+        var topLeftDevice = toDevice.Transform(topLeft);
+        var bottomRightDevice = toDevice.Transform(new Point(topLeft.X + width, topLeft.Y + height));
+
+        var rect = new Rect(topLeftDevice, new Size(bottomRightDevice.X - topLeftDevice.X, bottomRightDevice.Y - topLeftDevice.Y));
         if (_lastPreviewRect.Equals(rect) ||
             (Math.Abs(_lastPreviewRect.X - rect.X) < PreviewRectEpsilon &&
              Math.Abs(_lastPreviewRect.Y - rect.Y) < PreviewRectEpsilon &&

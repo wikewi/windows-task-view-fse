@@ -211,11 +211,11 @@
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center">
                 <views:WindowTile DataContext="{Binding LeftTile}"
-                                   Visibility="{Binding DataContext, RelativeSource={RelativeSource Self}, Converter={StaticResource NullToVisibilityConverter}}"/>
+                                   Visibility="{Binding LeftTile, Converter={StaticResource NullToVisibilityConverter}}"/>
                 <views:WindowTile DataContext="{Binding CenterTile}"
-                                   Visibility="{Binding DataContext, RelativeSource={RelativeSource Self}, Converter={StaticResource NullToVisibilityConverter}}"/>
+                                   Visibility="{Binding CenterTile, Converter={StaticResource NullToVisibilityConverter}}"/>
                 <views:WindowTile DataContext="{Binding RightTile}"
-                                   Visibility="{Binding DataContext, RelativeSource={RelativeSource Self}, Converter={StaticResource NullToVisibilityConverter}}"/>
+                                   Visibility="{Binding RightTile, Converter={StaticResource NullToVisibilityConverter}}"/>
             </StackPanel>
         </Grid>
 

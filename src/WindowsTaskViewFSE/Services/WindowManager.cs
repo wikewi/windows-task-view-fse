@@ -1,8 +1,11 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using System.Windows;
+using System.Windows.Media;
 using System.Windows.Threading;
 using WindowsTaskViewFSE.Helpers;
 using WindowsTaskViewFSE.Models;
@@ -17,7 +20,13 @@ public class WindowManager : IWindowManager, IDisposable
     private IntPtr _winEventHook = IntPtr.Zero;
     private NativeInterop.WinEventDelegate? _winEventDelegate;
     private bool _isMonitoring;
+    private readonly object _knownHandlesLock = new();
     private readonly HashSet<IntPtr> _knownHandles = new();
+    private readonly ConcurrentDictionary<IntPtr, ImageSource?> _thumbnailCache = new();
+    private readonly ConcurrentDictionary<IntPtr, ImageSource?> _iconCache = new();
+    private readonly object _dirtyThumbnailLock = new();
+    private readonly HashSet<IntPtr> _dirtyThumbnailHandles = new();
+    private int _pollInProgress;
 
     public event EventHandler? WindowsChanged;
 
@@ -57,7 +66,18 @@ public class WindowManager : IWindowManager, IDisposable
             return true;
         }, IntPtr.Zero);
 
+        PruneStaleCacheEntries(windows.Select(w => w.Handle));
+
         return windows;
+    }
+
+    /// <summary>
+    /// Enumerates open windows off the UI thread so the caller (e.g. the main view model)
+    /// stays responsive while thumbnails are captured and process metadata is resolved.
+    /// </summary>
+    public Task<IReadOnlyList<WindowInfo>> GetOpenWindowsAsync()
+    {
+        return Task.Run(GetOpenWindows);
     }
 
     public bool SwitchToWindow(IntPtr handle)
@@ -189,6 +209,11 @@ public class WindowManager : IWindowManager, IDisposable
     {
         if (idObject != 0 || hwnd == IntPtr.Zero) return;
 
+        lock (_dirtyThumbnailLock)
+        {
+            _dirtyThumbnailHandles.Add(hwnd);
+        }
+
         Application.Current?.Dispatcher?.BeginInvoke(DispatcherPriority.Background, new Action(() =>
         {
             WindowsChanged?.Invoke(this, EventArgs.Empty);
@@ -197,15 +222,66 @@ public class WindowManager : IWindowManager, IDisposable
 
     private void OnPollTick(object? sender, EventArgs e)
     {
-        var currentWindows = GetOpenWindows();
-        var currentHandles = new HashSet<IntPtr>(currentWindows.Select(w => w.Handle));
-
-        if (!currentHandles.SetEquals(_knownHandles))
+        // Guard against overlapping enumerations if a previous poll tick's background work
+        // hasn't finished before the next timer tick fires.
+        if (Interlocked.CompareExchange(ref _pollInProgress, 1, 0) != 0)
         {
-            _knownHandles.Clear();
-            foreach (var h in currentHandles) _knownHandles.Add(h);
-            WindowsChanged?.Invoke(this, EventArgs.Empty);
+            return;
         }
+
+        // Detect handle changes on a background thread using a lightweight enumeration
+        // (no thumbnail/icon capture) so the poll never blocks the UI thread. The full,
+        // thumbnail-bearing enumeration only runs when WindowsChanged actually fires.
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                var currentHandles = new HashSet<IntPtr>(EnumerateValidWindowHandles());
+                bool changed;
+
+                lock (_knownHandlesLock)
+                {
+                    changed = !currentHandles.SetEquals(_knownHandles);
+                    if (changed)
+                    {
+                        _knownHandles.Clear();
+                        foreach (var h in currentHandles) _knownHandles.Add(h);
+                    }
+                }
+
+                if (changed)
+                {
+                    Application.Current?.Dispatcher?.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+                    {
+                        WindowsChanged?.Invoke(this, EventArgs.Empty);
+                    }));
+                }
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _pollInProgress, 0);
+            }
+        });
+    }
+
+    private List<IntPtr> EnumerateValidWindowHandles()
+    {
+        var handles = new List<IntPtr>();
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return handles;
+        }
+
+        NativeInterop.EnumWindows((hWnd, lParam) =>
+        {
+            if (IsValidAppWindow(hWnd))
+            {
+                handles.Add(hWnd);
+            }
+            return true;
+        }, IntPtr.Zero);
+
+        return handles;
     }
 
     private bool IsValidAppWindow(IntPtr hWnd)
@@ -295,8 +371,8 @@ public class WindowManager : IWindowManager, IDisposable
             bool isMaximized = NativeInterop.IsZoomed(hWnd);
             bool isActive = hWnd == foregroundHwnd;
 
-            var icon = _thumbnailProvider.ExtractWindowIcon(hWnd, executablePath);
-            var thumbnail = _thumbnailProvider.CaptureWindowThumbnail(hWnd, 480, 270);
+            var icon = GetOrCreateIcon(hWnd, executablePath);
+            var thumbnail = GetOrCreateThumbnail(hWnd, isActive);
 
             return new WindowInfo
             {
@@ -319,6 +395,77 @@ public class WindowManager : IWindowManager, IDisposable
         {
             Debug.WriteLine($"[WindowManager] Error creating WindowInfo for {hWnd}: {ex.Message}");
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Returns the cached window icon if available, otherwise extracts and caches it.
+    /// Icons rarely change for the lifetime of a window, so they are cached indefinitely per handle.
+    /// </summary>
+    private ImageSource? GetOrCreateIcon(IntPtr hWnd, string executablePath)
+    {
+        // Presence of the key (even with a null value) means extraction was already attempted,
+        // so a persistently-null icon is not retried on every poll.
+        if (_iconCache.TryGetValue(hWnd, out var cachedIcon))
+        {
+            return cachedIcon;
+        }
+
+        var icon = _thumbnailProvider.ExtractWindowIcon(hWnd, executablePath);
+        _iconCache[hWnd] = icon;
+        return icon;
+    }
+
+    /// <summary>
+    /// Returns the cached thumbnail for a window unless it is missing, dirty (window content changed),
+    /// or currently the active/foreground window (which is refreshed on every poll to stay accurate).
+    /// This avoids the costly PrintWindow/BitBlt capture for every window on every poll tick.
+    /// </summary>
+    private ImageSource? GetOrCreateThumbnail(IntPtr hWnd, bool isActive)
+    {
+        bool isDirty;
+        lock (_dirtyThumbnailLock)
+        {
+            isDirty = _dirtyThumbnailHandles.Contains(hWnd);
+        }
+
+        bool hasCached = _thumbnailCache.TryGetValue(hWnd, out var cachedThumbnail) && cachedThumbnail != null;
+
+        if (hasCached && !isDirty && !isActive)
+        {
+            return cachedThumbnail;
+        }
+
+        var thumbnail = _thumbnailProvider.CaptureWindowThumbnail(hWnd, 480, 270);
+        _thumbnailCache[hWnd] = thumbnail;
+
+        // Only clear the dirty flag once a fresh thumbnail has actually been captured and stored,
+        // so a failed/short-circuited capture doesn't lose track of a pending refresh.
+        lock (_dirtyThumbnailLock)
+        {
+            _dirtyThumbnailHandles.Remove(hWnd);
+        }
+
+        return thumbnail;
+    }
+
+    private void PruneStaleCacheEntries(IEnumerable<IntPtr> currentHandles)
+    {
+        var current = new HashSet<IntPtr>(currentHandles);
+
+        foreach (var stale in _thumbnailCache.Keys.Where(h => !current.Contains(h)).ToList())
+        {
+            _thumbnailCache.TryRemove(stale, out _);
+        }
+
+        foreach (var stale in _iconCache.Keys.Where(h => !current.Contains(h)).ToList())
+        {
+            _iconCache.TryRemove(stale, out _);
+        }
+
+        lock (_dirtyThumbnailLock)
+        {
+            _dirtyThumbnailHandles.RemoveWhere(h => !current.Contains(h));
         }
     }
 

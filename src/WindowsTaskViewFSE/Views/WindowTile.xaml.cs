@@ -4,7 +4,6 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
-using System.Windows.Media.Effects;
 using WindowsTaskViewFSE.ViewModels;
 
 namespace WindowsTaskViewFSE.Views;
@@ -34,6 +33,7 @@ public partial class WindowTile : UserControl
         {
             newVm.PropertyChanged += OnViewModelPropertyChanged;
             UpdateFocusState(newVm.IsFocused, animate: false);
+            BringIntoViewIfFocused(newVm.IsFocused);
         }
     }
 
@@ -44,6 +44,7 @@ public partial class WindowTile : UserControl
             if (e.PropertyName == nameof(WindowTileViewModel.IsFocused))
             {
                 UpdateFocusState(vm.IsFocused, animate: true);
+                BringIntoViewIfFocused(vm.IsFocused);
             }
             else if (e.PropertyName == nameof(WindowTileViewModel.IsClosing))
             {
@@ -52,6 +53,14 @@ public partial class WindowTile : UserControl
                     AnimateClose();
                 }
             }
+        }
+    }
+
+    private void BringIntoViewIfFocused(bool isFocused)
+    {
+        if (isFocused)
+        {
+            BringIntoView();
         }
     }
 
@@ -81,20 +90,16 @@ public partial class WindowTile : UserControl
 
     private void UpdateFocusState(bool isFocused, bool animate)
     {
-        double targetScale = isFocused ? 1.05 : 1.0;
-        double targetShadowBlur = isFocused ? 24.0 : 0.0;
-        double targetShadowOpacity = isFocused ? 0.85 : 0.0;
+        double targetScale = isFocused ? 1.08 : 1.0;
         double targetHintOpacity = isFocused ? 1.0 : 0.0;
-        Color targetBorderColor = isFocused ? Color.FromRgb(16, 124, 16) : Color.FromRgb(56, 56, 56);
-        double targetBorderThickness = isFocused ? 3.0 : 2.0;
+        Color targetBorderColor = isFocused ? Color.FromRgb(0x00, 0xD4, 0xFF) : Color.FromRgb(58, 58, 58);
+        double targetBorderThickness = isFocused ? 4.0 : 2.0;
 
         if (!animate)
         {
             TileScale.ScaleX = targetScale;
             TileScale.ScaleY = targetScale;
-            TileShadow.BlurRadius = targetShadowBlur;
-            TileShadow.Opacity = targetShadowOpacity;
-            FocusHint.Opacity = targetHintOpacity;
+            CloseButton.Opacity = targetHintOpacity;
             CardBorder.BorderBrush = new SolidColorBrush(targetBorderColor);
             CardBorder.BorderThickness = new Thickness(targetBorderThickness);
             return;
@@ -106,19 +111,13 @@ public partial class WindowTile : UserControl
         TileScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleXAnim);
         TileScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleYAnim);
 
-        // Animate shadow
-        var blurAnim = new DoubleAnimation(targetShadowBlur, AnimationDuration) { EasingFunction = AnimationEase };
-        var opacityAnim = new DoubleAnimation(targetShadowOpacity, AnimationDuration) { EasingFunction = AnimationEase };
-        TileShadow.BeginAnimation(DropShadowEffect.BlurRadiusProperty, blurAnim);
-        TileShadow.BeginAnimation(DropShadowEffect.OpacityProperty, opacityAnim);
-
-        // Animate hint
+        // Animate close button visibility
         var hintAnim = new DoubleAnimation(targetHintOpacity, AnimationDuration) { EasingFunction = AnimationEase };
-        FocusHint.BeginAnimation(OpacityProperty, hintAnim);
+        CloseButton.BeginAnimation(OpacityProperty, hintAnim);
 
         // Animate border color
         var colorAnim = new ColorAnimation(targetBorderColor, AnimationDuration) { EasingFunction = AnimationEase };
-        var brush = CardBorder.BorderBrush as SolidColorBrush ?? new SolidColorBrush(Color.FromRgb(56, 56, 56));
+        var brush = CardBorder.BorderBrush as SolidColorBrush ?? new SolidColorBrush(Color.FromRgb(58, 58, 58));
         CardBorder.BorderBrush = brush.IsFrozen ? brush.Clone() : brush;
         CardBorder.BorderBrush.BeginAnimation(SolidColorBrush.ColorProperty, colorAnim);
 
@@ -127,14 +126,14 @@ public partial class WindowTile : UserControl
 
     private void AnimateHover(bool isHovered)
     {
-        double targetScale = isHovered ? 1.02 : 1.0;
+        double targetScale = isHovered ? 1.03 : 1.0;
         var anim = new DoubleAnimation(targetScale, AnimationDuration) { EasingFunction = AnimationEase };
         TileScale.BeginAnimation(ScaleTransform.ScaleXProperty, anim);
         TileScale.BeginAnimation(ScaleTransform.ScaleYProperty, anim);
 
-        Color targetBorderColor = isHovered ? Color.FromRgb(90, 90, 90) : Color.FromRgb(56, 56, 56);
+        Color targetBorderColor = isHovered ? Color.FromRgb(90, 90, 90) : Color.FromRgb(58, 58, 58);
         var colorAnim = new ColorAnimation(targetBorderColor, AnimationDuration) { EasingFunction = AnimationEase };
-        var brush = CardBorder.BorderBrush as SolidColorBrush ?? new SolidColorBrush(Color.FromRgb(56, 56, 56));
+        var brush = CardBorder.BorderBrush as SolidColorBrush ?? new SolidColorBrush(Color.FromRgb(58, 58, 58));
         CardBorder.BorderBrush = brush.IsFrozen ? brush.Clone() : brush;
         CardBorder.BorderBrush.BeginAnimation(SolidColorBrush.ColorProperty, colorAnim);
     }

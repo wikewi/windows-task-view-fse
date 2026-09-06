@@ -9,20 +9,24 @@ namespace WindowsTaskViewFSE.ViewModels;
 
 public class MainViewModel : ViewModelBase, IDisposable
 {
+    /// <summary>
+    /// Number of columns skipped by a single LB/RB (PageLeft/PageRight) press, so paging feels
+    /// like jumping a "screen width" of tiles rather than moving one column at a time.
+    /// </summary>
+    private const int PageJumpColumnMultiplier = 2;
+
     private readonly IWindowManager _windowManager;
     private readonly IInputManager _inputManager;
-    private readonly ISoundService _soundService;
     private readonly IControllerInputService _controllerService;
     private readonly DispatcherTimer _clockTimer;
 
     private WindowTileViewModel? _selectedWindow;
     private int _selectedIndex = -1;
-    private int _columnsCount = 3;
+    private int _rowsCount = 2;
     private string _searchQuery = string.Empty;
     private string _headerTime = string.Empty;
     private string _statusMessage = string.Empty;
     private bool _isControllerConnected;
-    private bool _isSoundMuted;
 
     public event EventHandler? RequestClose;
 
@@ -78,10 +82,15 @@ public class MainViewModel : ViewModelBase, IDisposable
 
     public bool HasSelectedWindow => SelectedWindow != null;
 
-    public int ColumnsCount
+    /// <summary>
+    /// Number of rows displayed in the horizontally scrolling tile carousel.
+    /// Tiles flow top-to-bottom within a column before wrapping to the next column (column-major order),
+    /// matching the Xbox FSE horizontal grid layout.
+    /// </summary>
+    public int RowsCount
     {
-        get => _columnsCount;
-        set => SetProperty(ref _columnsCount, Math.Max(1, value));
+        get => _rowsCount;
+        set => SetProperty(ref _rowsCount, Math.Max(1, value));
     }
 
     public string SearchQuery
@@ -114,18 +123,6 @@ public class MainViewModel : ViewModelBase, IDisposable
         set => SetProperty(ref _isControllerConnected, value);
     }
 
-    public bool IsSoundMuted
-    {
-        get => _isSoundMuted;
-        set
-        {
-            if (SetProperty(ref _isSoundMuted, value))
-            {
-                _soundService.IsMuted = value;
-            }
-        }
-    }
-
     public int TotalWindowsCount => FilteredWindows.Count;
 
     // Commands
@@ -134,17 +131,14 @@ public class MainViewModel : ViewModelBase, IDisposable
     public ICommand CloseCurrentCommand { get; }
     public ICommand RefreshCommand { get; }
     public ICommand DismissCommand { get; }
-    public ICommand ToggleMuteCommand { get; }
 
     public MainViewModel(
         IWindowManager windowManager,
         IInputManager inputManager,
-        ISoundService soundService,
         IControllerInputService controllerService)
     {
         _windowManager = windowManager ?? throw new ArgumentNullException(nameof(windowManager));
         _inputManager = inputManager ?? throw new ArgumentNullException(nameof(inputManager));
-        _soundService = soundService ?? throw new ArgumentNullException(nameof(soundService));
         _controllerService = controllerService ?? throw new ArgumentNullException(nameof(controllerService));
 
         NavigateCommand = new RelayCommand<object>(param =>
@@ -163,7 +157,6 @@ public class MainViewModel : ViewModelBase, IDisposable
         CloseCurrentCommand = new RelayCommand(CloseSelected);
         RefreshCommand = new RelayCommand(RefreshWindows);
         DismissCommand = new RelayCommand(Dismiss);
-        ToggleMuteCommand = new RelayCommand(() => IsSoundMuted = !IsSoundMuted);
 
         // Subscriptions
         _inputManager.NavigationRequested += OnNavigationRequested;
@@ -190,9 +183,27 @@ public class MainViewModel : ViewModelBase, IDisposable
 
     public void RefreshWindows()
     {
+        // Fire-and-forget: enumeration happens off the UI thread (see WindowManager.GetOpenWindowsAsync)
+        // so the carousel stays responsive to input while windows/thumbnails are gathered.
+        _ = RefreshWindowsAsync();
+    }
+
+    private async Task RefreshWindowsAsync()
+    {
         IntPtr previousSelectedHwnd = SelectedWindow?.Handle ?? IntPtr.Zero;
 
-        var rawWindows = _windowManager.GetOpenWindows();
+        IReadOnlyList<WindowInfo> rawWindows;
+        try
+        {
+            rawWindows = await _windowManager.GetOpenWindowsAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MainViewModel] Failed to enumerate windows: {ex.Message}");
+            StatusMessage = "Unable to refresh open apps.";
+            return;
+        }
+
         Windows.Clear();
 
         int index = 0;
@@ -220,52 +231,56 @@ public class MainViewModel : ViewModelBase, IDisposable
         if (current < 0) current = 0;
 
         int count = FilteredWindows.Count;
-        int cols = ColumnsCount;
+        int rows = RowsCount;
         int next = current;
 
         switch (direction)
         {
-            case NavigationDirection.Left:
+            case NavigationDirection.Up:
                 next = (current - 1 + count) % count;
                 break;
 
-            case NavigationDirection.Right:
+            case NavigationDirection.Down:
                 next = (current + 1) % count;
                 break;
 
-            case NavigationDirection.Up:
-                if (current - cols >= 0)
+            case NavigationDirection.Left:
+                if (current - rows >= 0)
                 {
-                    next = current - cols;
+                    next = current - rows;
                 }
                 else
                 {
-                    // Wrap to bottom in same column or last item
-                    int target = current + (count / cols) * cols;
-                    if (target >= count) target -= cols;
+                    // Wrap to the last column in the same row. Note: when the tile count isn't
+                    // an exact multiple of RowsCount, the final column is only partially filled;
+                    // the fallback below clamps to the last valid index in that case so the
+                    // selection never lands out of bounds (it may not always be in the exact
+                    // same visual row, which is an acceptable trade-off for a ragged last column).
+                    int target = current + (count / rows) * rows;
+                    if (target >= count) target -= rows;
                     next = (target >= 0 && target < count) ? target : (count - 1);
                 }
                 break;
 
-            case NavigationDirection.Down:
-                if (current + cols < count)
+            case NavigationDirection.Right:
+                if (current + rows < count)
                 {
-                    next = current + cols;
+                    next = current + rows;
                 }
                 else
                 {
-                    // Wrap to top in same column
-                    next = current % cols;
+                    // Wrap to the first column in the same row
+                    next = current % rows;
                     if (next >= count) next = 0;
                 }
                 break;
 
             case NavigationDirection.PageLeft:
-                next = Math.Max(0, current - cols * 2);
+                next = Math.Max(0, current - rows * PageJumpColumnMultiplier);
                 break;
 
             case NavigationDirection.PageRight:
-                next = Math.Min(count - 1, current + cols * 2);
+                next = Math.Min(count - 1, current + rows * PageJumpColumnMultiplier);
                 break;
 
             case NavigationDirection.Select:
@@ -282,14 +297,12 @@ public class MainViewModel : ViewModelBase, IDisposable
 
             case NavigationDirection.Refresh:
                 RefreshWindows();
-                _soundService.PlayNotification();
                 return;
         }
 
         if (next != current || SelectedWindow == null)
         {
             SelectedIndex = next;
-            _soundService.PlayNavigate();
             _controllerService.TriggerHapticFeedback(0, 15000, 15000, 40);
         }
     }
@@ -303,7 +316,6 @@ public class MainViewModel : ViewModelBase, IDisposable
     public void SelectTile(WindowTileViewModel tile)
     {
         if (tile == null) return;
-        _soundService.PlaySelect();
         _controllerService.TriggerHapticFeedback(0, 35000, 35000, 100);
 
         _windowManager.SwitchToWindow(tile.Handle);
@@ -319,7 +331,6 @@ public class MainViewModel : ViewModelBase, IDisposable
     public void CloseTile(WindowTileViewModel tile)
     {
         if (tile == null) return;
-        _soundService.PlayClose();
         _controllerService.TriggerHapticFeedback(0, 45000, 20000, 120);
 
         tile.IsClosing = true;
@@ -345,7 +356,6 @@ public class MainViewModel : ViewModelBase, IDisposable
 
     public void Dismiss()
     {
-        _soundService.PlayBack();
         RequestClose?.Invoke(this, EventArgs.Empty);
     }
 
@@ -399,10 +409,6 @@ public class MainViewModel : ViewModelBase, IDisposable
     private void OnControllerConnectionChanged(object? sender, bool isConnected)
     {
         IsControllerConnected = isConnected;
-        if (isConnected)
-        {
-            _soundService.PlayNotification();
-        }
     }
 
     private void UpdateClock()

@@ -19,6 +19,8 @@ public class MockWindowManager : IWindowManager
 
     public IReadOnlyList<WindowInfo> GetOpenWindows() => Windows.ToList();
 
+    public Task<IReadOnlyList<WindowInfo>> GetOpenWindowsAsync() => Task.FromResult(GetOpenWindows());
+
     public bool SwitchToWindow(IntPtr handle)
     {
         LastSwitchedHandle = handle;
@@ -60,22 +62,6 @@ public class MockInputManager : IInputManager
     {
         NavigationRequested?.Invoke(this, direction);
     }
-}
-
-public class MockSoundService : ISoundService
-{
-    public bool IsMuted { get; set; }
-    public int NavCount { get; private set; }
-    public int SelectCount { get; private set; }
-    public int BackCount { get; private set; }
-    public int CloseCount { get; private set; }
-    public int NotifCount { get; private set; }
-
-    public void PlayNavigate() => NavCount++;
-    public void PlaySelect() => SelectCount++;
-    public void PlayBack() => BackCount++;
-    public void PlayClose() => CloseCount++;
-    public void PlayNotification() => NotifCount++;
 }
 
 public class MockControllerService : IControllerInputService
@@ -177,10 +163,9 @@ public class ViewModelTests
     {
         var mockWm = new MockWindowManager { Windows = CreateSampleWindows(4) };
         var mockIm = new MockInputManager();
-        var mockSound = new MockSoundService();
         var mockCtrl = new MockControllerService();
 
-        var mainVm = new MainViewModel(mockWm, mockIm, mockSound, mockCtrl);
+        var mainVm = new MainViewModel(mockWm, mockIm, mockCtrl);
         mainVm.Initialize();
 
         Assert.True(mockWm.IsMonitoringStarted);
@@ -192,67 +177,65 @@ public class ViewModelTests
     }
 
     [Fact]
-    public void MainViewModel_NavigateRightAndLeft_UpdatesSelection()
+    public void MainViewModel_NavigateUpAndDown_UpdatesSelection()
     {
         var mockWm = new MockWindowManager { Windows = CreateSampleWindows(4) };
         var mockIm = new MockInputManager();
-        var mockSound = new MockSoundService();
         var mockCtrl = new MockControllerService();
 
-        var mainVm = new MainViewModel(mockWm, mockIm, mockSound, mockCtrl) { ColumnsCount = 2 };
+        var mainVm = new MainViewModel(mockWm, mockIm, mockCtrl) { RowsCount = 2 };
         mainVm.Initialize();
 
         Assert.Equal(0, mainVm.SelectedIndex);
 
-        // Move Right
-        mainVm.Navigate(NavigationDirection.Right);
+        // Move Down (adjacent item within the same column)
+        mainVm.Navigate(NavigationDirection.Down);
         Assert.Equal(1, mainVm.SelectedIndex);
-        Assert.Equal(1, mockSound.NavCount);
+        Assert.Equal(1, mockCtrl.HapticFeedbackCount);
 
-        // Move Right again
-        mainVm.Navigate(NavigationDirection.Right);
+        // Move Down again
+        mainVm.Navigate(NavigationDirection.Down);
         Assert.Equal(2, mainVm.SelectedIndex);
 
-        // Move Left
-        mainVm.Navigate(NavigationDirection.Left);
+        // Move Up
+        mainVm.Navigate(NavigationDirection.Up);
         Assert.Equal(1, mainVm.SelectedIndex);
 
-        // Move Left to 0
-        mainVm.Navigate(NavigationDirection.Left);
+        // Move Up to 0
+        mainVm.Navigate(NavigationDirection.Up);
         Assert.Equal(0, mainVm.SelectedIndex);
 
-        // Wrap around Left
-        mainVm.Navigate(NavigationDirection.Left);
+        // Wrap around Up
+        mainVm.Navigate(NavigationDirection.Up);
         Assert.Equal(3, mainVm.SelectedIndex);
     }
 
     [Fact]
-    public void MainViewModel_NavigateUpDown_In2DGrid_CalculatesCorrectly()
+    public void MainViewModel_NavigateLeftRight_InColumnMajorGrid_CalculatesCorrectly()
     {
-        var mockWm = new MockWindowManager { Windows = CreateSampleWindows(6) }; // 2 rows x 3 cols
+        var mockWm = new MockWindowManager { Windows = CreateSampleWindows(6) }; // 3 columns x 2 rows
         var mockIm = new MockInputManager();
-        var mockSound = new MockSoundService();
         var mockCtrl = new MockControllerService();
 
-        var mainVm = new MainViewModel(mockWm, mockIm, mockSound, mockCtrl) { ColumnsCount = 3 };
+        var mainVm = new MainViewModel(mockWm, mockIm, mockCtrl) { RowsCount = 3 };
         mainVm.Initialize();
 
         Assert.Equal(0, mainVm.SelectedIndex);
 
-        // Down from index 0 -> index 3 (0 + 3)
-        mainVm.Navigate(NavigationDirection.Down);
+        // Right from index 0 -> index 3 (0 + 3 rows)
+        mainVm.Navigate(NavigationDirection.Right);
         Assert.Equal(3, mainVm.SelectedIndex);
 
-        // Down from index 3 -> wraps back to 0
-        mainVm.Navigate(NavigationDirection.Down);
+        // Right from index 3 -> wraps back to 0
+        mainVm.Navigate(NavigationDirection.Right);
         Assert.Equal(0, mainVm.SelectedIndex);
 
-        // Up from index 0 -> wraps to bottom index 3
-        mainVm.Navigate(NavigationDirection.Up);
+        // Left from index 0 -> wraps to rightmost column index 3
+        mainVm.Navigate(NavigationDirection.Left);
         Assert.Equal(3, mainVm.SelectedIndex);
 
-        // Up from index 3 -> index 0
-        mainVm.Navigate(NavigationDirection.Up);
+        // Left from index 3 -> index 0
+        mainVm.Navigate(NavigationDirection.Left);
         Assert.Equal(0, mainVm.SelectedIndex);
     }
 
@@ -269,10 +252,9 @@ public class ViewModelTests
             }
         };
         var mockIm = new MockInputManager();
-        var mockSound = new MockSoundService();
         var mockCtrl = new MockControllerService();
 
-        var mainVm = new MainViewModel(mockWm, mockIm, mockSound, mockCtrl);
+        var mainVm = new MainViewModel(mockWm, mockIm, mockCtrl);
         mainVm.Initialize();
 
         Assert.Equal(3, mainVm.TotalWindowsCount);
@@ -290,10 +272,9 @@ public class ViewModelTests
     {
         var mockWm = new MockWindowManager { Windows = CreateSampleWindows(3) };
         var mockIm = new MockInputManager();
-        var mockSound = new MockSoundService();
         var mockCtrl = new MockControllerService();
 
-        var mainVm = new MainViewModel(mockWm, mockIm, mockSound, mockCtrl);
+        var mainVm = new MainViewModel(mockWm, mockIm, mockCtrl);
         mainVm.Initialize();
 
         bool closeRequested = false;
@@ -306,7 +287,6 @@ public class ViewModelTests
 
         Assert.Equal(selectedHwnd, mockWm.LastSwitchedHandle);
         Assert.True(closeRequested);
-        Assert.Equal(1, mockSound.SelectCount);
     }
 
     [Fact]
@@ -314,10 +294,9 @@ public class ViewModelTests
     {
         var mockWm = new MockWindowManager { Windows = CreateSampleWindows(3) };
         var mockIm = new MockInputManager();
-        var mockSound = new MockSoundService();
         var mockCtrl = new MockControllerService();
 
-        var mainVm = new MainViewModel(mockWm, mockIm, mockSound, mockCtrl);
+        var mainVm = new MainViewModel(mockWm, mockIm, mockCtrl);
         mainVm.Initialize();
 
         mainVm.SelectedIndex = 1;
@@ -327,19 +306,17 @@ public class ViewModelTests
 
         Assert.Equal(handleToClose, mockWm.LastClosedHandle);
         Assert.Equal(2, mainVm.TotalWindowsCount);
-        Assert.Equal(1, mockSound.CloseCount);
         Assert.NotNull(mainVm.SelectedWindow);
     }
 
     [Fact]
-    public void MainViewModel_Dismiss_PlaysBackSoundAndCloses()
+    public void MainViewModel_Dismiss_RequestsClose()
     {
         var mockWm = new MockWindowManager { Windows = CreateSampleWindows(2) };
         var mockIm = new MockInputManager();
-        var mockSound = new MockSoundService();
         var mockCtrl = new MockControllerService();
 
-        var mainVm = new MainViewModel(mockWm, mockIm, mockSound, mockCtrl);
+        var mainVm = new MainViewModel(mockWm, mockIm, mockCtrl);
         mainVm.Initialize();
 
         bool closeRequested = false;
@@ -348,26 +325,5 @@ public class ViewModelTests
         mainVm.Dismiss();
 
         Assert.True(closeRequested);
-        Assert.Equal(1, mockSound.BackCount);
-    }
-
-    [Fact]
-    public void MainViewModel_ToggleMute_TogglesMuteState()
-    {
-        var mockWm = new MockWindowManager();
-        var mockIm = new MockInputManager();
-        var mockSound = new MockSoundService();
-        var mockCtrl = new MockControllerService();
-
-        var mainVm = new MainViewModel(mockWm, mockIm, mockSound, mockCtrl);
-        Assert.False(mainVm.IsSoundMuted);
-
-        mainVm.ToggleMuteCommand.Execute(null);
-        Assert.True(mainVm.IsSoundMuted);
-        Assert.True(mockSound.IsMuted);
-
-        mainVm.ToggleMuteCommand.Execute(null);
-        Assert.False(mainVm.IsSoundMuted);
-        Assert.False(mockSound.IsMuted);
     }
 }

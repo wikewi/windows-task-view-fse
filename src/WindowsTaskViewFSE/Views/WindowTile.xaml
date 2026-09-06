@@ -8,15 +8,17 @@
              d:DataContext="{d:DesignInstance Type=viewModels:WindowTileViewModel}"
              Focusable="False"
              Cursor="Hand"
-             Margin="14">
+             Margin="12">
 
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
     </UserControl.Resources>
 
+    <!-- Large horizontal card: thumbnail fills the entire tile, name overlaid at the bottom.
+         No black bars or extra padding around the tile content. -->
     <Grid x:Name="RootGrid"
-          Width="380"
-          Height="250"
+          Width="360"
+          Height="336"
           RenderTransformOrigin="0.5,0.5">
 
         <Grid.RenderTransform>
@@ -25,184 +27,109 @@
             </TransformGroup>
         </Grid.RenderTransform>
 
-        <!-- Main Card Border with Xbox Style Shadow and Highlight -->
         <Border x:Name="CardBorder"
-                Background="#1E1E1E"
-                BorderBrush="#383838"
+                Background="#000000"
+                BorderBrush="#3A3A3A"
                 BorderThickness="2"
-                CornerRadius="12"
+                CornerRadius="8"
                 ClipToBounds="True">
 
-            <Border.Effect>
-                <DropShadowEffect x:Name="TileShadow"
-                                  Color="#107C10"
-                                  BlurRadius="0"
-                                  ShadowDepth="0"
-                                  Opacity="0"/>
-            </Border.Effect>
-
             <Grid>
-                <Grid.RowDefinitions>
-                    <!-- Header with app icon and title -->
-                    <RowDefinition Height="46"/>
-                    <!-- Thumbnail preview -->
-                    <RowDefinition Height="*"/>
-                    <!-- Footer / Badge -->
-                    <RowDefinition Height="32"/>
-                </Grid.RowDefinitions>
+                <!-- Thumbnail: fills the entire card, no padding/black bars -->
+                <Image Source="{Binding Thumbnail}"
+                       Stretch="UniformToFill"
+                       RenderOptions.BitmapScalingMode="HighQuality"/>
 
-                <!-- Header Bar -->
-                <Border Grid.Row="0"
-                        Background="#252525"
-                        Padding="12,0,8,0">
-                    <Grid VerticalAlignment="Center">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-
-                        <!-- App Icon -->
-                        <Image Grid.Column="0"
-                               Source="{Binding Icon}"
-                               Width="24"
-                               Height="24"
-                               Margin="0,0,10,0"
-                               VerticalAlignment="Center"
-                               RenderOptions.BitmapScalingMode="HighQuality"/>
-
-                        <!-- Title and Process Name -->
-                        <StackPanel Grid.Column="1"
-                                    VerticalAlignment="Center"
-                                    Margin="0,0,8,0">
-                            <TextBlock Text="{Binding DisplayTitle}"
-                                       Foreground="#FFFFFF"
-                                       FontSize="13.5"
-                                       FontWeight="SemiBold"
-                                       TextTrimming="CharacterEllipsis"
-                                       ToolTip="{Binding Title}"/>
-                            <TextBlock Text="{Binding ProcessName}"
-                                       Foreground="#888888"
-                                       FontSize="11"
-                                       TextTrimming="CharacterEllipsis"/>
-                        </StackPanel>
-
-                        <!-- Close Button (X) -->
-                        <Button Grid.Column="2"
-                                Command="{Binding CloseCommand}"
-                                ToolTip="Close Application (X / Del)"
-                                Width="26"
-                                Height="26"
-                                Background="Transparent"
-                                BorderBrush="Transparent"
-                                Cursor="Hand"
-                                HorizontalAlignment="Right"
-                                VerticalAlignment="Center">
-                            <Button.Style>
-                                <Style TargetType="Button">
-                                    <Setter Property="Template">
-                                        <Setter.Value>
-                                            <ControlTemplate TargetType="Button">
-                                                <Border x:Name="BtnBorder"
-                                                        Background="Transparent"
-                                                        CornerRadius="13"
-                                                        Padding="4">
-                                                    <Path Data="M 2,2 L 10,10 M 10,2 L 2,10"
-                                                          Stroke="#AAAAAA"
-                                                          StrokeThickness="1.6"
-                                                          HorizontalAlignment="Center"
-                                                          VerticalAlignment="Center"/>
-                                                </Border>
-                                                <ControlTemplate.Triggers>
-                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                        <Setter TargetName="BtnBorder" Property="Background" Value="#E81123"/>
-                                                    </Trigger>
-                                                </ControlTemplate.Triggers>
-                                            </ControlTemplate>
-                                        </Setter.Value>
-                                    </Setter>
-                                </Style>
-                            </Button.Style>
-                        </Button>
-                    </Grid>
+                <!-- Bottom name overlay gradient -->
+                <Border VerticalAlignment="Bottom" Height="72">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop Color="#00000000" Offset="0.0"/>
+                            <GradientStop Color="#D6000000" Offset="1.0"/>
+                        </LinearGradientBrush>
+                    </Border.Background>
                 </Border>
 
-                <!-- Window Thumbnail Area -->
-                <Border Grid.Row="1"
-                        Background="#141414"
-                        Margin="0">
-                    <Grid>
-                        <!-- Thumbnail Image -->
-                        <Image Source="{Binding Thumbnail}"
-                               Stretch="Uniform"
-                               HorizontalAlignment="Center"
-                               VerticalAlignment="Center"
-                               RenderOptions.BitmapScalingMode="HighQuality"/>
+                <!-- App name / process name overlay -->
+                <StackPanel VerticalAlignment="Bottom"
+                            Orientation="Horizontal"
+                            Margin="14,0,14,10">
+                    <Image Source="{Binding Icon}"
+                           Width="22"
+                           Height="22"
+                           Margin="0,0,10,0"
+                           VerticalAlignment="Center"
+                           RenderOptions.BitmapScalingMode="HighQuality"/>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="{Binding DisplayTitle}"
+                                   Foreground="#FFFFFF"
+                                   FontSize="15"
+                                   FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis"
+                                   MaxWidth="280"
+                                   ToolTip="{Binding Title}"/>
+                        <TextBlock Text="{Binding ProcessName}"
+                                   Foreground="#B0B0B0"
+                                   FontSize="11.5"
+                                   TextTrimming="CharacterEllipsis"
+                                   MaxWidth="280"/>
+                    </StackPanel>
+                </StackPanel>
 
-                        <!-- Focus Overlay Highlight -->
-                        <Border x:Name="FocusOverlay"
-                                Background="#107C10"
-                                Opacity="0"
-                                IsHitTestVisible="False"/>
-
-                        <!-- Minimized Badge if minimized -->
-                        <Border HorizontalAlignment="Right"
-                                VerticalAlignment="Bottom"
-                                Margin="10"
-                                Background="#B3000000"
-                                CornerRadius="4"
-                                Padding="6,2"
-                                Visibility="{Binding IsMinimized, Converter={StaticResource BoolToVis}}">
-                            <TextBlock Text="MINIMIZED"
-                                       Foreground="#CCCCCC"
-                                       FontSize="10"
-                                       FontWeight="Bold"/>
-                        </Border>
-                    </Grid>
+                <!-- Minimized badge -->
+                <Border HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Margin="10"
+                        Background="#B3000000"
+                        CornerRadius="4"
+                        Padding="6,2"
+                        Visibility="{Binding IsMinimized, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="MINIMIZED"
+                               Foreground="#CCCCCC"
+                               FontSize="10"
+                               FontWeight="Bold"/>
                 </Border>
 
-                <!-- Footer Status Bar -->
-                <Border Grid.Row="2"
-                        Background="#1D1D1D"
-                        Padding="12,0">
-                    <Grid VerticalAlignment="Center">
-                        <TextBlock Text="{Binding Index, StringFormat='#{0}'}"
-                                   Foreground="#666666"
-                                   FontSize="11"
-                                   FontWeight="Bold"
-                                   HorizontalAlignment="Left"
-                                   VerticalAlignment="Center"/>
-
-                        <StackPanel x:Name="FocusHint"
-                                    Orientation="Horizontal"
-                                    HorizontalAlignment="Right"
-                                    VerticalAlignment="Center"
-                                    Opacity="0">
-                            <Border Background="#107C10"
-                                    CornerRadius="9"
-                                    Width="18"
-                                    Height="18"
-                                    Margin="0,0,6,0">
-                                <TextBlock Text="A"
-                                           Foreground="White"
-                                           FontSize="11"
-                                           FontWeight="Bold"
-                                           HorizontalAlignment="Center"
-                                           VerticalAlignment="Center"/>
-                            </Border>
-                            <TextBlock Text="Press A / Enter to switch"
-                                       Foreground="#107C10"
-                                       FontSize="11"
-                                       FontWeight="SemiBold"
-                                       VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </Grid>
-                </Border>
+                <!-- Close (X) button, visible on hover/focus via code-behind opacity -->
+                <Button x:Name="CloseButton"
+                        Command="{Binding CloseCommand}"
+                        ToolTip="Close Application (X / Del)"
+                        Width="30"
+                        Height="30"
+                        Margin="8"
+                        Background="Transparent"
+                        BorderBrush="Transparent"
+                        Cursor="Hand"
+                        Opacity="0"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="BtnBorder"
+                                                Background="#801A1A1A"
+                                                CornerRadius="15"
+                                                Padding="4">
+                                            <Path Data="M 3,3 L 11,11 M 11,3 L 3,11"
+                                                  Stroke="#FFFFFF"
+                                                  StrokeThickness="1.8"
+                                                  HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="BtnBorder" Property="Background" Value="#E81123"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </Button.Style>
+                </Button>
             </Grid>
         </Border>
     </Grid>
-
-    <UserControl.Triggers>
-        <!-- Triggers will also be handled in code-behind for smooth property changed bindings -->
-    </UserControl.Triggers>
 </UserControl>

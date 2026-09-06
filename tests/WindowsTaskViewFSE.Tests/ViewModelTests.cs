@@ -390,6 +390,30 @@ public class ViewModelTests
     }
 
     [Fact]
+    public void MainViewModel_CarouselTiles_WithExactlyTwoWindows_OnlyPopulatesRightTile()
+    {
+        var mockWm = new MockWindowManager { Windows = CreateSampleWindows(2) };
+        var mockIm = new MockInputManager();
+        var mockCtrl = new MockControllerService();
+
+        var mainVm = new MainViewModel(mockWm, mockIm, mockCtrl);
+        mainVm.Initialize();
+
+        // With only 2 windows, GetTileAtOffset(-1) and GetTileAtOffset(1) would both resolve
+        // to the same other window. LeftTile must be suppressed (null) so the same
+        // WindowTileViewModel instance is never bound to two visible carousel slots at once.
+        Assert.Equal("Application 1", mainVm.CenterTile?.Title);
+        Assert.Null(mainVm.LeftTile);
+        Assert.Equal("Application 2", mainVm.RightTile?.Title);
+
+        mainVm.Navigate(NavigationDirection.Right);
+
+        Assert.Equal("Application 2", mainVm.CenterTile?.Title);
+        Assert.Null(mainVm.LeftTile);
+        Assert.Equal("Application 1", mainVm.RightTile?.Title);
+    }
+
+    [Fact]
     public void MainViewModel_SearchFilter_FiltersCorrectly()
     {
         var mockWm = new MockWindowManager

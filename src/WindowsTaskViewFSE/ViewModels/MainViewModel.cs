@@ -92,9 +92,10 @@ public class MainViewModel : ViewModelBase, IDisposable
 
     /// <summary>
     /// The window shown to the left of center (previous window in the circular carousel).
-    /// Null when there are fewer than 2 windows open.
+    /// Null when there are fewer than 3 windows open (with exactly 2 windows, the other
+    /// window is shown only on the right to avoid the same tile appearing on both sides).
     /// </summary>
-    public WindowTileViewModel? LeftTile => GetTileAtOffset(-1);
+    public WindowTileViewModel? LeftTile => FilteredWindows.Count >= 3 ? GetTileAtOffset(-1) : null;
 
     /// <summary>
     /// The window shown to the right of center (next window in the circular carousel).

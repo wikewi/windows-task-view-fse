@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/WindowsTaskViewFSE/WindowsTaskViewFSE.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/WindowsTaskViewFSE.Tests/WindowsTaskViewFSE.Tests.csproj" />
+  </Folder>
+</Solution>

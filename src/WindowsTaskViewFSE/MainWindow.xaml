@@ -1,0 +1,368 @@
+<Window x:Class="WindowsTaskViewFSE.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:views="clr-namespace:WindowsTaskViewFSE.Views"
+        xmlns:viewModels="clr-namespace:WindowsTaskViewFSE.ViewModels"
+        mc:Ignorable="d"
+        Title="Windows Task View - Xbox FSE"
+        WindowStyle="None"
+        WindowState="Maximized"
+        WindowStartupLocation="CenterScreen"
+        Background="#0E1110"
+        Foreground="#FFFFFF"
+        FontFamily="Segoe UI, Segoe UI Variable, Arial"
+        Focusable="True"
+        d:DataContext="{d:DesignInstance Type=viewModels:MainViewModel}">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+        <!-- Custom ScrollViewer Style -->
+        <Style TargetType="ScrollViewer">
+            <Setter Property="PanningMode" Value="Both"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollViewer">
+                        <Grid>
+                            <ScrollContentPresenter CanContentScroll="{TemplateBinding CanContentScroll}"/>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Controller Button Badge Style -->
+        <Style x:Key="ControllerBadgeStyle" TargetType="Border">
+            <Setter Property="CornerRadius" Value="11"/>
+            <Setter Property="Width" Value="22"/>
+            <Setter Property="Height" Value="22"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- Keyboard Key Badge Style -->
+        <Style x:Key="KeyboardBadgeStyle" TargetType="Border">
+            <Setter Property="Background" Value="#2B2B2B"/>
+            <Setter Property="BorderBrush" Value="#4A4A4A"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="6,2"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <!-- Background Ambient Glow & Gradient -->
+        <Grid.Background>
+            <RadialGradientBrush Center="0.5,0.0" GradientOrigin="0.5,0.0" RadiusX="0.8" RadiusY="0.6">
+                <GradientStop Color="#1A281A" Offset="0.0"/>
+                <GradientStop Color="#0D110F" Offset="0.5"/>
+                <GradientStop Color="#080A09" Offset="1.0"/>
+            </RadialGradientBrush>
+        </Grid.Background>
+
+        <Grid.RowDefinitions>
+            <!-- Header (Xbox Brand, Search, Status, Clock) -->
+            <RowDefinition Height="76"/>
+            <!-- Main Content (Window Tiles Grid) -->
+            <RowDefinition Height="*"/>
+            <!-- Footer (Xbox HUD Controls) -->
+            <RowDefinition Height="64"/>
+        </Grid.RowDefinitions>
+
+        <!-- HEADER BAR -->
+        <Border Grid.Row="0"
+                Background="#141816"
+                BorderBrush="#252C28"
+                BorderThickness="0,0,0,1"
+                Padding="32,0">
+            <Grid VerticalAlignment="Center">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Left: Xbox Logo & Title -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- Xbox Glow Sphere Icon -->
+                    <Border Width="34" Height="34" CornerRadius="17" Background="#107C10" Margin="0,0,14,0">
+                        <Border.Effect>
+                            <DropShadowEffect Color="#107C10" BlurRadius="12" ShadowDepth="0" Opacity="0.7"/>
+                        </Border.Effect>
+                        <Path Data="M 7,17 Q 17,2 27,17 M 17,7 Q 2,17 17,27 M 17,7 Q 32,17 17,27"
+                              Stroke="White"
+                              StrokeThickness="2.2"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center"/>
+                    </Border>
+
+                    <StackPanel VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="TASK VIEW"
+                                       Foreground="#FFFFFF"
+                                       FontSize="18"
+                                       FontWeight="Black"/>
+                            <Border Background="#107C10"
+                                    CornerRadius="4"
+                                    Margin="10,0,0,0"
+                                    Padding="6,1"
+                                    VerticalAlignment="Center">
+                                <TextBlock Text="XBOX FSE"
+                                           Foreground="White"
+                                           FontSize="10"
+                                           FontWeight="Bold"/>
+                            </Border>
+                        </StackPanel>
+                        <TextBlock Text="{Binding StatusMessage}"
+                                   Foreground="#7F9485"
+                                   FontSize="11.5"
+                                   Margin="0,1,0,0"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Center: Search Filter Box -->
+                <Border Grid.Column="1"
+                        HorizontalAlignment="Center"
+                        Width="360"
+                        Height="38"
+                        Background="#1B221E"
+                        BorderBrush="#2E3A33"
+                        BorderThickness="1.5"
+                        CornerRadius="19"
+                        Padding="14,0">
+                    <Grid VerticalAlignment="Center">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Path Grid.Column="0"
+                              Data="M 10,10 L 15,15 M 11,6 A 5,5 0 1,1 1,6 A 5,5 0 1,1 11,6"
+                              Stroke="#7F9485"
+                              StrokeThickness="1.8"
+                              Margin="0,0,10,0"
+                              VerticalAlignment="Center"/>
+
+                        <TextBox Grid.Column="1"
+                                 x:Name="SearchBox"
+                                 Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
+                                 Background="Transparent"
+                                 BorderThickness="0"
+                                 Foreground="#FFFFFF"
+                                 CaretBrush="#107C10"
+                                 FontSize="13.5"
+                                 VerticalAlignment="Center">
+                            <TextBox.Style>
+                                <Style TargetType="TextBox">
+                                    <Style.Resources>
+                                        <VisualBrush x:Key="CueBannerBrush" AlignmentX="Left" AlignmentY="Center" Stretch="None">
+                                            <VisualBrush.Visual>
+                                                <Label Content="Filter open apps..." Foreground="#5A6D60" FontSize="13.5" Padding="0"/>
+                                            </VisualBrush.Visual>
+                                        </VisualBrush>
+                                    </Style.Resources>
+                                    <Style.Triggers>
+                                        <Trigger Property="Text" Value="">
+                                            <Setter Property="Background" Value="{StaticResource CueBannerBrush}" />
+                                        </Trigger>
+                                        <Trigger Property="Text" Value="{x:Null}">
+                                            <Setter Property="Background" Value="{StaticResource CueBannerBrush}" />
+                                        </Trigger>
+                                        <Trigger Property="IsKeyboardFocused" Value="True">
+                                            <Setter Property="Background" Value="Transparent" />
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBox.Style>
+                        </TextBox>
+                    </Grid>
+                </Border>
+
+                <!-- Right: Controller Status, Mute & Time -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- Controller Indicator -->
+                    <Border Background="#1E2721"
+                            CornerRadius="14"
+                            Padding="10,4"
+                            Margin="0,0,14,0"
+                            VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Ellipse Width="8" Height="8" Margin="0,0,6,0">
+                                <Ellipse.Style>
+                                    <Style TargetType="Ellipse">
+                                        <Setter Property="Fill" Value="#44554B"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsControllerConnected}" Value="True">
+                                                <Setter Property="Fill" Value="#107C10"/>
+                                                <Setter Property="Effect">
+                                                    <Setter.Value>
+                                                        <DropShadowEffect Color="#107C10" BlurRadius="6" ShadowDepth="0" Opacity="0.9"/>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Ellipse.Style>
+                            </Ellipse>
+                            <TextBlock Text="CONTROLLER"
+                                       Foreground="#8CA394"
+                                       FontSize="11"
+                                       FontWeight="Bold"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Clock -->
+                    <TextBlock Text="{Binding HeaderTime}"
+                               Foreground="#FFFFFF"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               Margin="0,0,8,0"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- MAIN TILES CONTAINER -->
+        <ScrollViewer Grid.Row="1"
+                      x:Name="TilesScrollViewer"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto"
+                      Padding="40,24">
+            <Grid>
+                <!-- Empty State when no apps found -->
+                <StackPanel HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Margin="0,100,0,0">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding TotalWindowsCount}" Value="0">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
+
+                    <Border Width="64" Height="64" CornerRadius="32" Background="#1D2420" HorizontalAlignment="Center" Margin="0,0,0,16">
+                        <Path Data="M 12,12 L 36,36 M 36,12 L 12,36"
+                              Stroke="#4B5E52"
+                              StrokeThickness="3"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock Text="No Open Applications Found"
+                               Foreground="#FFFFFF"
+                               FontSize="20"
+                               FontWeight="Bold"
+                               HorizontalAlignment="Center"/>
+                    <TextBlock Text="Open an application on your desktop or press [Y] / [F5] to refresh."
+                               Foreground="#6E8475"
+                               FontSize="14"
+                               HorizontalAlignment="Center"
+                               Margin="0,8,0,0"/>
+                </StackPanel>
+
+                <!-- Tiles Grid -->
+                <ItemsControl ItemsSource="{Binding FilteredWindows}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal" HorizontalAlignment="Center"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <views:WindowTile DataContext="{Binding}"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Grid>
+        </ScrollViewer>
+
+        <!-- FOOTER HUD BAR (Xbox Controller & Keyboard Navigation Guides) -->
+        <Border Grid.Row="2"
+                Background="#101412"
+                BorderBrush="#212824"
+                BorderThickness="0,1,0,0"
+                Padding="32,0">
+            <Grid VerticalAlignment="Center">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Left: Action Hints -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+
+                    <!-- (A) / [Enter] Switch -->
+                    <StackPanel Orientation="Horizontal" Margin="0,0,24,0" VerticalAlignment="Center">
+                        <Border Style="{StaticResource ControllerBadgeStyle}" Background="#107C10">
+                            <TextBlock Text="A" Foreground="White" FontWeight="Black" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <Border Style="{StaticResource KeyboardBadgeStyle}">
+                            <TextBlock Text="Enter" Foreground="#CCCCCC" FontSize="11" FontWeight="SemiBold"/>
+                        </Border>
+                        <TextBlock Text="Switch Window" Foreground="#A0B5A7" FontSize="12.5" FontWeight="Medium" VerticalAlignment="Center"/>
+                    </StackPanel>
+
+                    <!-- (B) / [Esc] Close Task View -->
+                    <StackPanel Orientation="Horizontal" Margin="0,0,24,0" VerticalAlignment="Center">
+                        <Border Style="{StaticResource ControllerBadgeStyle}" Background="#D83B01">
+                            <TextBlock Text="B" Foreground="White" FontWeight="Black" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <Border Style="{StaticResource KeyboardBadgeStyle}">
+                            <TextBlock Text="Esc" Foreground="#CCCCCC" FontSize="11" FontWeight="SemiBold"/>
+                        </Border>
+                        <TextBlock Text="Close Task View" Foreground="#A0B5A7" FontSize="12.5" FontWeight="Medium" VerticalAlignment="Center"/>
+                    </StackPanel>
+
+                    <!-- (X) / [Del] Close App -->
+                    <StackPanel Orientation="Horizontal" Margin="0,0,24,0" VerticalAlignment="Center">
+                        <Border Style="{StaticResource ControllerBadgeStyle}" Background="#0078D7">
+                            <TextBlock Text="X" Foreground="White" FontWeight="Black" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <Border Style="{StaticResource KeyboardBadgeStyle}">
+                            <TextBlock Text="Del" Foreground="#CCCCCC" FontSize="11" FontWeight="SemiBold"/>
+                        </Border>
+                        <TextBlock Text="Close App" Foreground="#A0B5A7" FontSize="12.5" FontWeight="Medium" VerticalAlignment="Center"/>
+                    </StackPanel>
+
+                    <!-- (Y) / [F5] Refresh -->
+                    <StackPanel Orientation="Horizontal" Margin="0,0,24,0" VerticalAlignment="Center">
+                        <Border Style="{StaticResource ControllerBadgeStyle}" Background="#FFB900">
+                            <TextBlock Text="Y" Foreground="#111111" FontWeight="Black" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <Border Style="{StaticResource KeyboardBadgeStyle}">
+                            <TextBlock Text="F5" Foreground="#CCCCCC" FontSize="11" FontWeight="SemiBold"/>
+                        </Border>
+                        <TextBlock Text="Refresh" Foreground="#A0B5A7" FontSize="12.5" FontWeight="Medium" VerticalAlignment="Center"/>
+                    </StackPanel>
+
+                    <!-- (D-Pad / Arrows) Navigate -->
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Border Style="{StaticResource ControllerBadgeStyle}" Background="#3A4840">
+                            <TextBlock Text="+" Foreground="White" FontWeight="Black" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-2,0,0"/>
+                        </Border>
+                        <Border Style="{StaticResource KeyboardBadgeStyle}">
+                            <TextBlock Text="Arrows" Foreground="#CCCCCC" FontSize="11" FontWeight="SemiBold"/>
+                        </Border>
+                        <TextBlock Text="Navigate" Foreground="#A0B5A7" FontSize="12.5" FontWeight="Medium" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Right: Xbox Guide tip -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="Xbox Full Screen Experience"
+                               Foreground="#53665A"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

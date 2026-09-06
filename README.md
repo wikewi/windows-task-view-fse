@@ -1,6 +1,6 @@
 # Windows Task View - Xbox FSE
 
-A Windows 11 task view application that replicates the Xbox Full Screen Experience (FSE) with native Xbox controller and keyboard navigation, window thumbnail capture, real-time window management, and smooth visual transitions.
+A Windows 11 task view application that replicates the Xbox Full Screen Experience (FSE) with native Xbox controller and keyboard navigation, a 3-window carousel with live DWM window previews, real-time window management, and smooth visual transitions.
 
 ![Xbox FSE Task View Banner](https://img.shields.io/badge/Platform-Windows%2011%20%7C%2010-green?logo=windows)
 ![.NET 8.0](https://img.shields.io/badge/.NET-8.0-blue?logo=dotnet)
@@ -13,33 +13,33 @@ A Windows 11 task view application that replicates the Xbox Full Screen Experien
 ## 🎮 Features
 
 ### 1. Xbox FSE Interface & Styling
-- **Grid-Based Task View**: Large, high-resolution preview cards for all active desktop windows and applications.
-- **Xbox Theme**: Dark background (`#0E1110`), signature Xbox green accent highlights (`#107C10`), rounded corners, and glowing ambient drop shadows.
-- **Smooth Animations**: Dynamic tile scaling on focus (1.0x to 1.05x), smooth border illumination, and closing fade/shrink transitions.
-- **Sound Effects**: Procedurally generated Xbox-style audio feedback for navigation, window switching, dismiss, and notifications.
+- **3-Window Carousel**: Exactly 3 tiles on screen at a time — previous (left), active/focused (center), and next (right) — matching the Xbox FSE task switcher.
+- **Live Window Previews**: The visible tiles show live, continuously-updating window content via DWM thumbnail composition (`DwmRegisterThumbnail`), not static screenshots.
+- **Xbox Theme**: Pure black background (`#000000`) with a cyan (`#00D4FF`) focus border on the center tile, rounded corners, and dimmed/scaled-down side tiles.
+- **Smooth Animations**: Dynamic tile scaling/dimming on focus change and closing fade/shrink transitions.
 
 ### 2. Complete Input Support
 - **Xbox Controller (XInput)**:
-  - **D-Pad / Left Thumbstick**: 2D grid navigation with automatic repeat and deadzone handling.
-  - **(A) Button**: Switch/activate focused window.
+  - **D-Pad / Left Thumbstick**: Move to the previous/next window in the carousel, with automatic repeat and deadzone handling.
+  - **(A) Button**: Switch/activate focused (center) window.
   - **(B) Button**: Dismiss/close Task View.
-  - **(X) Button**: Close the selected application.
+  - **(X) Button**: Close the focused application.
   - **(Y) Button**: Refresh running windows list.
-  - **LB / RB**: Page navigation.
+  - **LB / RB**: Fast paging — skip multiple windows at once.
   - **Haptic Feedback**: Controller vibration pulse on navigation and actions.
 - **Keyboard**:
-  - **Arrow Keys**: 2D grid navigation with seamless wrap-around.
-  - **Enter / Space**: Switch to selected window.
+  - **Arrow Keys**: Move to the previous/next window in the carousel, with seamless wrap-around.
+  - **Enter / Space**: Switch to the focused (center) window.
   - **Escape**: Close Task View.
-  - **Delete / X**: Close selected window.
+  - **Delete / X**: Close the focused window.
   - **F5**: Refresh window list.
-  - **Page Up / Page Down**: Page jump navigation.
+  - **Page Up / Page Down**: Fast paging — skip multiple windows at once.
 - **Mouse**:
   - Hover effects, click tile to switch window, and dedicated close button (X) on each tile.
 
 ### 3. Native Windows 11 Window Management & Interop
 - **Window Enumeration**: Uses Win32 `EnumWindows`, filtering out background cloaked UWP windows, tooltips, shells, and taskbars.
-- **Thumbnail Capture**: Live window capture using GDI `PrintWindow` (`PW_RENDERFULLCONTENT`) and DWM thumbnail APIs.
+- **Live Window Previews**: The 3 visible carousel tiles are kept live via `DwmRegisterThumbnail` / `DwmUpdateThumbnailProperties`, so the compositor renders the actual window content in real time (a static GDI `PrintWindow` capture is only used as a brief fallback before the live preview attaches).
 - **Icon Extraction**: Extracts high-resolution icons from window handles (`WM_GETICON`, `GetClassLongPtr`) and application binaries (`ExtractIconEx`).
 - **Foreground Switching**: Windows 11 thread-input attaching (`AttachThreadInput` & `SetForegroundWindow`) to ensure instant focus transfer.
 - **Real-Time Monitoring**: Uses `SetWinEventHook` and polling to detect newly launched or closed applications.
@@ -57,7 +57,8 @@ windows-task-view-fse/
 │       ├── Helpers/
 │       │   ├── NativeInterop.cs            # Win32, DWM, GDI, and Shell APIs
 │       │   ├── XInputInterop.cs            # XInput 1.4 / 1.3 / 9.1.0 interop
-│       │   └── RelayCommand.cs             # MVVM ICommand implementations
+│       │   ├── RelayCommand.cs             # MVVM ICommand implementations
+│       │   └── NullToVisibilityConverter.cs # Hides empty carousel slots
 │       ├── Models/
 │       │   └── WindowInfo.cs               # Window metadata model
 │       ├── Services/
@@ -68,9 +69,7 @@ windows-task-view-fse/
 │       │   ├── IControllerInputService.cs  # Controller service contract
 │       │   ├── ControllerInputService.cs   # XInput polling, deadzones & haptics
 │       │   ├── IInputManager.cs            # Unified input manager contract
-│       │   ├── InputManager.cs             # Keyboard & controller dispatcher
-│       │   ├── ISoundService.cs            # Sound effects contract
-│       │   └── SoundService.cs             # Procedural WAV sound synthesizer
+│       │   └── InputManager.cs             # Keyboard & controller dispatcher
 │       ├── ViewModels/
 │       │   ├── ViewModelBase.cs            # INotifyPropertyChanged base
 │       │   ├── WindowTileViewModel.cs      # Individual window tile ViewModel
@@ -80,7 +79,7 @@ windows-task-view-fse/
 │       └── WindowsTaskViewFSE.csproj
 ├── tests/
 │   └── WindowsTaskViewFSE.Tests/
-│       ├── ViewModelTests.cs               # Grid navigation, filter & commands
+│       ├── ViewModelTests.cs               # Carousel navigation, filter & commands
 │       ├── WindowInfoTests.cs              # Model & display title logic
 │       ├── InputManagerTests.cs            # Keyboard & controller mapping
 │       ├── ControllerInputTests.cs         # XInput constants & events
@@ -130,7 +129,7 @@ dotnet test tests/WindowsTaskViewFSE.Tests/WindowsTaskViewFSE.Tests.csproj
 | **Close Task View** | (B) Button | `Escape` | - |
 | **Close Application** | (X) Button | `Delete` / `X` | Click (X) Button |
 | **Refresh Apps** | (Y) Button | `F5` | - |
-| **Page Jump** | `LB` / `RB` | `Page Up` / `Page Down` | Scroll Wheel |
+| **Fast Page (skip windows)** | `LB` / `RB` | `Page Up` / `Page Down` | - |
 
 ---
 

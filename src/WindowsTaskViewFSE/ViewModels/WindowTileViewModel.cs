@@ -1,16 +1,20 @@
+using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using WindowsTaskViewFSE.Helpers;
 using WindowsTaskViewFSE.Models;
+using WindowsTaskViewFSE.Services;
 
 namespace WindowsTaskViewFSE.ViewModels;
 
 public class WindowTileViewModel : ViewModelBase
 {
+    private readonly IThumbnailProvider? _thumbnailProvider;
     private WindowInfo _model;
     private bool _isFocused;
     private bool _isClosing;
     private int _index;
+    private IntPtr _dwmThumbnailId = IntPtr.Zero;
 
     public WindowInfo Model
     {
@@ -61,14 +65,72 @@ public class WindowTileViewModel : ViewModelBase
     public ICommand SelectCommand { get; }
     public ICommand CloseCommand { get; }
 
+    /// <summary>
+    /// True while a live DWM thumbnail is registered for this tile, so the view can hide the
+    /// static fallback bitmap and let the compositor-rendered live preview show through instead.
+    /// </summary>
+    public bool HasLivePreview => _dwmThumbnailId != IntPtr.Zero;
+
     public WindowTileViewModel(
         WindowInfo model,
         Action<WindowTileViewModel>? onSelect = null,
-        Action<WindowTileViewModel>? onClose = null)
+        Action<WindowTileViewModel>? onClose = null,
+        IThumbnailProvider? thumbnailProvider = null)
     {
         _model = model ?? throw new ArgumentNullException(nameof(model));
+        _thumbnailProvider = thumbnailProvider;
 
         SelectCommand = new RelayCommand(() => onSelect?.Invoke(this));
         CloseCommand = new RelayCommand(() => onClose?.Invoke(this));
+    }
+
+    /// <summary>
+    /// Registers (if needed) and positions a live DWM window preview for this tile's window,
+    /// rendered directly by the compositor into <paramref name="destRect"/> (in <paramref name="destinationHwnd"/>
+    /// client coordinates). Cheap to call repeatedly - only issues a new registration once.
+    /// </summary>
+    public void AttachLivePreview(IntPtr destinationHwnd, Rect destRect)
+    {
+        if (_thumbnailProvider == null || Handle == IntPtr.Zero || destinationHwnd == IntPtr.Zero) return;
+
+        if (_dwmThumbnailId == IntPtr.Zero)
+        {
+            _dwmThumbnailId = _thumbnailProvider.RegisterDwmThumbnail(destinationHwnd, Handle);
+            if (_dwmThumbnailId != IntPtr.Zero)
+            {
+                OnPropertyChanged(nameof(HasLivePreview));
+            }
+        }
+
+        if (_dwmThumbnailId != IntPtr.Zero)
+        {
+            _thumbnailProvider.UpdateDwmThumbnail(_dwmThumbnailId, destRect);
+        }
+    }
+
+    /// <summary>
+    /// Repositions an already-registered live preview (e.g. as the tile animates/resizes).
+    /// No-op if a live preview hasn't been attached yet.
+    /// </summary>
+    public void UpdateLivePreviewRect(Rect destRect)
+    {
+        if (_dwmThumbnailId != IntPtr.Zero)
+        {
+            _thumbnailProvider?.UpdateDwmThumbnail(_dwmThumbnailId, destRect);
+        }
+    }
+
+    /// <summary>
+    /// Unregisters the live preview, e.g. when the tile is no longer one of the 3 visible
+    /// carousel slots or the control is unloaded. Safe to call even if never attached.
+    /// </summary>
+    public void DetachLivePreview()
+    {
+        if (_dwmThumbnailId != IntPtr.Zero)
+        {
+            _thumbnailProvider?.UnregisterDwmThumbnail(_dwmThumbnailId);
+            _dwmThumbnailId = IntPtr.Zero;
+            OnPropertyChanged(nameof(HasLivePreview));
+        }
     }
 }

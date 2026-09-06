@@ -19,14 +19,13 @@ public partial class MainWindow : Window
         var controllerService = new ControllerInputService();
         var inputManager = new Services.InputManager(controllerService);
 
-        _viewModel = new MainViewModel(windowManager, inputManager, controllerService);
+        _viewModel = new MainViewModel(windowManager, inputManager, controllerService, thumbnailProvider);
         DataContext = _viewModel;
 
         _viewModel.RequestClose += OnRequestClose;
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
 
         Loaded += OnLoaded;
-        SizeChanged += OnSizeChanged;
         KeyDown += OnKeyDown;
         Closing += OnClosing;
     }
@@ -42,7 +41,6 @@ public partial class MainWindow : Window
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
 
         Loaded += OnLoaded;
-        SizeChanged += OnSizeChanged;
         KeyDown += OnKeyDown;
         Closing += OnClosing;
     }
@@ -50,24 +48,7 @@ public partial class MainWindow : Window
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         _viewModel.Initialize();
-        UpdateRowsCount();
         Focus();
-    }
-
-    private void OnSizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        UpdateRowsCount();
-    }
-
-    private void UpdateRowsCount()
-    {
-        // Each tile is 336px tall + 24px total margin = 360px per row.
-        double availableHeight = ActualHeight - 220;
-        if (availableHeight > 0)
-        {
-            int rows = Math.Max(1, (int)(availableHeight / 360));
-            _viewModel.RowsCount = rows;
-        }
     }
 
     private void OnKeyDown(object sender, KeyEventArgs e)

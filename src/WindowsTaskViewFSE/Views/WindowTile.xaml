@@ -35,25 +35,35 @@
                 ClipToBounds="True">
 
             <Grid>
-                <!-- Thumbnail: fills the entire card, no padding/black bars -->
-                <Image Source="{Binding Thumbnail}"
+                <Grid.RowDefinitions>
+                    <!-- Live preview area: DWM composites the actual live window content here. -->
+                    <RowDefinition Height="*"/>
+                    <!-- Title strip: kept out of the preview row so the live DWM overlay (which
+                         is drawn by the compositor above everything at that screen location)
+                         never covers the app name/icon, matching the Xbox FSE layout where the
+                         title sits below the preview instead of on top of it. -->
+                    <RowDefinition Height="72"/>
+                </Grid.RowDefinitions>
+
+                <!-- Static fallback thumbnail: fills the preview row only. While this tile is one
+                     of the 3 visible carousel slots, a live DWM window preview (registered in
+                     code-behind) is composited by the OS directly on top of this same area, so
+                     this bitmap is only ever visible as a brief fallback before the live preview
+                     attaches (or if live preview registration fails). -->
+                <Image x:Name="PreviewSurface"
+                       Grid.Row="0"
+                       Source="{Binding Thumbnail}"
                        Stretch="UniformToFill"
                        RenderOptions.BitmapScalingMode="HighQuality"/>
 
-                <!-- Bottom name overlay gradient -->
-                <Border VerticalAlignment="Bottom" Height="72">
-                    <Border.Background>
-                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                            <GradientStop Color="#00000000" Offset="0.0"/>
-                            <GradientStop Color="#D6000000" Offset="1.0"/>
-                        </LinearGradientBrush>
-                    </Border.Background>
-                </Border>
+                <!-- Title strip background -->
+                <Border Grid.Row="1" Background="#D6000000"/>
 
-                <!-- App name / process name overlay -->
-                <StackPanel VerticalAlignment="Bottom"
+                <!-- App name / process name -->
+                <StackPanel Grid.Row="1"
                             Orientation="Horizontal"
-                            Margin="14,0,14,10">
+                            VerticalAlignment="Center"
+                            Margin="14,0,14,0">
                     <Image Source="{Binding Icon}"
                            Width="22"
                            Height="22"
@@ -77,7 +87,8 @@
                 </StackPanel>
 
                 <!-- Minimized badge -->
-                <Border HorizontalAlignment="Right"
+                <Border Grid.Row="0"
+                        HorizontalAlignment="Right"
                         VerticalAlignment="Top"
                         Margin="10"
                         Background="#B3000000"
@@ -92,6 +103,7 @@
 
                 <!-- Close (X) button, visible on hover/focus via code-behind opacity -->
                 <Button x:Name="CloseButton"
+                        Grid.Row="0"
                         Command="{Binding CloseCommand}"
                         ToolTip="Close Application (X / Del)"
                         Width="30"

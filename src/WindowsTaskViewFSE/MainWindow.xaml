@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:views="clr-namespace:WindowsTaskViewFSE.Views"
         xmlns:viewModels="clr-namespace:WindowsTaskViewFSE.ViewModels"
+        xmlns:helpers="clr-namespace:WindowsTaskViewFSE.Helpers"
         mc:Ignorable="d"
         Title="Windows Task View - Xbox FSE"
         WindowStyle="None"
@@ -18,20 +19,7 @@
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
-
-        <!-- Custom ScrollViewer Style: horizontal panning carousel -->
-        <Style TargetType="ScrollViewer">
-            <Setter Property="PanningMode" Value="HorizontalOnly"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ScrollViewer">
-                        <Grid>
-                            <ScrollContentPresenter CanContentScroll="{TemplateBinding CanContentScroll}"/>
-                        </Grid>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
+        <helpers:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
 
         <!-- Controller Button Badge Style -->
         <Style x:Key="ControllerBadgeStyle" TargetType="Border">
@@ -215,27 +203,20 @@
                            Margin="0,8,0,0"/>
             </StackPanel>
 
-            <ScrollViewer x:Name="TilesScrollViewer"
-                          HorizontalScrollBarVisibility="Auto"
-                          VerticalScrollBarVisibility="Disabled"
-                          Padding="28,0">
-                <ItemsControl ItemsSource="{Binding FilteredWindows}"
-                              HorizontalAlignment="Left"
-                              VerticalAlignment="Stretch">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <!-- Vertical orientation wraps items into columns, flowing left-to-right,
-                                 producing multiple fixed rows with horizontal scrolling (Xbox FSE style). -->
-                            <WrapPanel Orientation="Vertical"/>
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <views:WindowTile DataContext="{Binding}"/>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </ScrollViewer>
+            <!-- 3-WINDOW CAROUSEL: exactly 3 fixed slots (previous / active / next), never scrolled.
+                 The center tile is the focused/active window (cyan border, full size); the left
+                 and right tiles are the previous/next windows in the circular list (smaller,
+                 dimmed). Navigating swaps which WindowTileViewModel is bound to each slot. -->
+            <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center">
+                <views:WindowTile DataContext="{Binding LeftTile}"
+                                   Visibility="{Binding DataContext, RelativeSource={RelativeSource Self}, Converter={StaticResource NullToVisibilityConverter}}"/>
+                <views:WindowTile DataContext="{Binding CenterTile}"
+                                   Visibility="{Binding DataContext, RelativeSource={RelativeSource Self}, Converter={StaticResource NullToVisibilityConverter}}"/>
+                <views:WindowTile DataContext="{Binding RightTile}"
+                                   Visibility="{Binding DataContext, RelativeSource={RelativeSource Self}, Converter={StaticResource NullToVisibilityConverter}}"/>
+            </StackPanel>
         </Grid>
 
         <!-- FOOTER HUD BAR (Xbox Controller & Keyboard Navigation Guides) -->

@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -25,6 +26,7 @@ public class WindowManager : IWindowManager, IDisposable
     private readonly ConcurrentDictionary<IntPtr, ImageSource?> _iconCache = new();
     private readonly object _dirtyThumbnailLock = new();
     private readonly HashSet<IntPtr> _dirtyThumbnailHandles = new();
+    private int _pollInProgress;
 
     public event EventHandler? WindowsChanged;
 
@@ -220,30 +222,44 @@ public class WindowManager : IWindowManager, IDisposable
 
     private void OnPollTick(object? sender, EventArgs e)
     {
+        // Guard against overlapping enumerations if a previous poll tick's background work
+        // hasn't finished before the next timer tick fires.
+        if (Interlocked.CompareExchange(ref _pollInProgress, 1, 0) != 0)
+        {
+            return;
+        }
+
         // Detect handle changes on a background thread using a lightweight enumeration
         // (no thumbnail/icon capture) so the poll never blocks the UI thread. The full,
         // thumbnail-bearing enumeration only runs when WindowsChanged actually fires.
         _ = Task.Run(() =>
         {
-            var currentHandles = new HashSet<IntPtr>(EnumerateValidWindowHandles());
-            bool changed;
-
-            lock (_knownHandlesLock)
+            try
             {
-                changed = !currentHandles.SetEquals(_knownHandles);
+                var currentHandles = new HashSet<IntPtr>(EnumerateValidWindowHandles());
+                bool changed;
+
+                lock (_knownHandlesLock)
+                {
+                    changed = !currentHandles.SetEquals(_knownHandles);
+                    if (changed)
+                    {
+                        _knownHandles.Clear();
+                        foreach (var h in currentHandles) _knownHandles.Add(h);
+                    }
+                }
+
                 if (changed)
                 {
-                    _knownHandles.Clear();
-                    foreach (var h in currentHandles) _knownHandles.Add(h);
+                    Application.Current?.Dispatcher?.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+                    {
+                        WindowsChanged?.Invoke(this, EventArgs.Empty);
+                    }));
                 }
             }
-
-            if (changed)
+            finally
             {
-                Application.Current?.Dispatcher?.BeginInvoke(DispatcherPriority.Background, new Action(() =>
-                {
-                    WindowsChanged?.Invoke(this, EventArgs.Empty);
-                }));
+                Interlocked.Exchange(ref _pollInProgress, 0);
             }
         });
     }
@@ -410,7 +426,7 @@ public class WindowManager : IWindowManager, IDisposable
         bool isDirty;
         lock (_dirtyThumbnailLock)
         {
-            isDirty = _dirtyThumbnailHandles.Remove(hWnd);
+            isDirty = _dirtyThumbnailHandles.Contains(hWnd);
         }
 
         bool hasCached = _thumbnailCache.TryGetValue(hWnd, out var cachedThumbnail) && cachedThumbnail != null;
@@ -422,6 +438,14 @@ public class WindowManager : IWindowManager, IDisposable
 
         var thumbnail = _thumbnailProvider.CaptureWindowThumbnail(hWnd, 480, 270);
         _thumbnailCache[hWnd] = thumbnail;
+
+        // Only clear the dirty flag once a fresh thumbnail has actually been captured and stored,
+        // so a failed/short-circuited capture doesn't lose track of a pending refresh.
+        lock (_dirtyThumbnailLock)
+        {
+            _dirtyThumbnailHandles.Remove(hWnd);
+        }
+
         return thumbnail;
     }
 

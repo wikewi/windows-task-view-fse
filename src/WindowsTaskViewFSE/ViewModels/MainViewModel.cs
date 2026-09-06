@@ -251,7 +251,11 @@ public class MainViewModel : ViewModelBase, IDisposable
                 }
                 else
                 {
-                    // Wrap to the last column in the same row
+                    // Wrap to the last column in the same row. Note: when the tile count isn't
+                    // an exact multiple of RowsCount, the final column is only partially filled;
+                    // the fallback below clamps to the last valid index in that case so the
+                    // selection never lands out of bounds (it may not always be in the exact
+                    // same visual row, which is an acceptable trade-off for a ragged last column).
                     int target = current + (count / rows) * rows;
                     if (target >= count) target -= rows;
                     next = (target >= 0 && target < count) ? target : (count - 1);

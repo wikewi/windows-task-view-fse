@@ -33,10 +33,7 @@ public partial class WindowTile : UserControl
         {
             newVm.PropertyChanged += OnViewModelPropertyChanged;
             UpdateFocusState(newVm.IsFocused, animate: false);
-            if (newVm.IsFocused)
-            {
-                BringIntoView();
-            }
+            BringIntoViewIfFocused(newVm.IsFocused);
         }
     }
 
@@ -47,10 +44,7 @@ public partial class WindowTile : UserControl
             if (e.PropertyName == nameof(WindowTileViewModel.IsFocused))
             {
                 UpdateFocusState(vm.IsFocused, animate: true);
-                if (vm.IsFocused)
-                {
-                    BringIntoView();
-                }
+                BringIntoViewIfFocused(vm.IsFocused);
             }
             else if (e.PropertyName == nameof(WindowTileViewModel.IsClosing))
             {
@@ -59,6 +53,14 @@ public partial class WindowTile : UserControl
                     AnimateClose();
                 }
             }
+        }
+    }
+
+    private void BringIntoViewIfFocused(bool isFocused)
+    {
+        if (isFocused)
+        {
+            BringIntoView();
         }
     }
 

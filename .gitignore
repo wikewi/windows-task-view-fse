@@ -1,0 +1,28 @@
+## Build and Release Folders
+bin/
+obj/
+out/
+
+## Visual Studio & Rider
+.vs/
+*.user
+*.userosscache
+*.sln.docstates
+.idea/
+*.suo
+
+## Windows / macOS junk
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+## Crash and memory dumps
+*.stackdump
+*.dmp
+*.crash
+
+## Test Results
+TestResults/
+[Tt]est[Rr]esult*
+*.trx

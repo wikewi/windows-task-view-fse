@@ -1,11 +1,46 @@
 using System.Collections.ObjectModel;
+using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 using WindowsTaskViewFSE.Models;
 using WindowsTaskViewFSE.Services;
 using WindowsTaskViewFSE.ViewModels;
 using Xunit;
 
 namespace WindowsTaskViewFSE.Tests;
+
+public class MockThumbnailProvider : IThumbnailProvider
+{
+    private IntPtr _nextThumbnailId = new IntPtr(1);
+
+    public int RegisterCallCount { get; private set; }
+    public int UpdateCallCount { get; private set; }
+    public int UnregisterCallCount { get; private set; }
+    public Rect LastDestRect { get; private set; }
+    public bool FailRegistration { get; set; }
+
+    public ImageSource? CaptureWindowThumbnail(IntPtr handle, int width = 480, int height = 270) => null;
+    public ImageSource? ExtractWindowIcon(IntPtr handle, string? executablePath = null) => null;
+
+    public IntPtr RegisterDwmThumbnail(IntPtr destinationHwnd, IntPtr sourceHwnd)
+    {
+        RegisterCallCount++;
+        if (FailRegistration) return IntPtr.Zero;
+        return _nextThumbnailId;
+    }
+
+    public bool UpdateDwmThumbnail(IntPtr thumbnailHandle, Rect destRect, byte opacity = 255, bool visible = true)
+    {
+        UpdateCallCount++;
+        LastDestRect = destRect;
+        return true;
+    }
+
+    public void UnregisterDwmThumbnail(IntPtr thumbnailHandle)
+    {
+        UnregisterCallCount++;
+    }
+}
 
 public class MockWindowManager : IWindowManager
 {
@@ -159,6 +194,56 @@ public class ViewModelTests
     }
 
     [Fact]
+    public void WindowTileViewModel_AttachLivePreview_RegistersOnceAndUpdatesRect()
+    {
+        var thumbnailProvider = new MockThumbnailProvider();
+        var model = new WindowInfo { Handle = new IntPtr(777), Title = "Live App" };
+        var vm = new WindowTileViewModel(model, thumbnailProvider: thumbnailProvider);
+
+        Assert.False(vm.HasLivePreview);
+
+        var destHwnd = new IntPtr(1);
+        var rect1 = new Rect(0, 0, 360, 264);
+        vm.AttachLivePreview(destHwnd, rect1);
+
+        Assert.True(vm.HasLivePreview);
+        Assert.Equal(1, thumbnailProvider.RegisterCallCount);
+        Assert.Equal(1, thumbnailProvider.UpdateCallCount);
+        Assert.Equal(rect1, thumbnailProvider.LastDestRect);
+
+        // Re-attaching (e.g. on layout change) should not re-register, only reposition.
+        var rect2 = new Rect(10, 10, 360, 264);
+        vm.AttachLivePreview(destHwnd, rect2);
+
+        Assert.Equal(1, thumbnailProvider.RegisterCallCount);
+        Assert.Equal(2, thumbnailProvider.UpdateCallCount);
+        Assert.Equal(rect2, thumbnailProvider.LastDestRect);
+
+        vm.DetachLivePreview();
+
+        Assert.False(vm.HasLivePreview);
+        Assert.Equal(1, thumbnailProvider.UnregisterCallCount);
+
+        // Detaching again should be a no-op.
+        vm.DetachLivePreview();
+        Assert.Equal(1, thumbnailProvider.UnregisterCallCount);
+    }
+
+    [Fact]
+    public void WindowTileViewModel_AttachLivePreview_WhenRegistrationFails_DoesNotMarkAttached()
+    {
+        var thumbnailProvider = new MockThumbnailProvider { FailRegistration = true };
+        var model = new WindowInfo { Handle = new IntPtr(888), Title = "Live App" };
+        var vm = new WindowTileViewModel(model, thumbnailProvider: thumbnailProvider);
+
+        vm.AttachLivePreview(new IntPtr(1), new Rect(0, 0, 100, 100));
+
+        Assert.False(vm.HasLivePreview);
+        Assert.Equal(1, thumbnailProvider.RegisterCallCount);
+        Assert.Equal(0, thumbnailProvider.UpdateCallCount);
+    }
+
+    [Fact]
     public void MainViewModel_Initialize_PopulatesWindowsAndSelectsFirst()
     {
         var mockWm = new MockWindowManager { Windows = CreateSampleWindows(4) };
@@ -183,12 +268,12 @@ public class ViewModelTests
         var mockIm = new MockInputManager();
         var mockCtrl = new MockControllerService();
 
-        var mainVm = new MainViewModel(mockWm, mockIm, mockCtrl) { RowsCount = 2 };
+        var mainVm = new MainViewModel(mockWm, mockIm, mockCtrl);
         mainVm.Initialize();
 
         Assert.Equal(0, mainVm.SelectedIndex);
 
-        // Move Down (adjacent item within the same column)
+        // Move Down (next window in the circular carousel)
         mainVm.Navigate(NavigationDirection.Down);
         Assert.Equal(1, mainVm.SelectedIndex);
         Assert.Equal(1, mockCtrl.HapticFeedbackCount);
@@ -197,7 +282,7 @@ public class ViewModelTests
         mainVm.Navigate(NavigationDirection.Down);
         Assert.Equal(2, mainVm.SelectedIndex);
 
-        // Move Up
+        // Move Up (previous window)
         mainVm.Navigate(NavigationDirection.Up);
         Assert.Equal(1, mainVm.SelectedIndex);
 
@@ -211,32 +296,121 @@ public class ViewModelTests
     }
 
     [Fact]
-    public void MainViewModel_NavigateLeftRight_InColumnMajorGrid_CalculatesCorrectly()
+    public void MainViewModel_NavigateLeftRight_CyclesThroughCarousel_Correctly()
     {
-        var mockWm = new MockWindowManager { Windows = CreateSampleWindows(6) }; // 3 columns x 2 rows
+        var mockWm = new MockWindowManager { Windows = CreateSampleWindows(6) };
         var mockIm = new MockInputManager();
         var mockCtrl = new MockControllerService();
 
-        var mainVm = new MainViewModel(mockWm, mockIm, mockCtrl) { RowsCount = 3 };
+        var mainVm = new MainViewModel(mockWm, mockIm, mockCtrl);
         mainVm.Initialize();
 
         Assert.Equal(0, mainVm.SelectedIndex);
 
-        // Right from index 0 -> index 3 (0 + 3 rows)
+        // Right moves to the next window (mirrors Down)
         mainVm.Navigate(NavigationDirection.Right);
-        Assert.Equal(3, mainVm.SelectedIndex);
+        Assert.Equal(1, mainVm.SelectedIndex);
 
-        // Right from index 3 -> wraps back to 0
+        mainVm.Navigate(NavigationDirection.Right);
+        Assert.Equal(2, mainVm.SelectedIndex);
+
+        // Left moves back to the previous window (mirrors Up)
+        mainVm.Navigate(NavigationDirection.Left);
+        Assert.Equal(1, mainVm.SelectedIndex);
+
+        // Left wraps from 0 to the last window
+        mainVm.Navigate(NavigationDirection.Left);
+        mainVm.Navigate(NavigationDirection.Left);
+        Assert.Equal(5, mainVm.SelectedIndex);
+
+        // Right wraps from the last window back to 0
         mainVm.Navigate(NavigationDirection.Right);
         Assert.Equal(0, mainVm.SelectedIndex);
+    }
 
-        // Left from index 0 -> wraps to rightmost column index 3
-        mainVm.Navigate(NavigationDirection.Left);
+    [Fact]
+    public void MainViewModel_PageLeftAndRight_JumpsMultipleWindows_AndWraps()
+    {
+        var mockWm = new MockWindowManager { Windows = CreateSampleWindows(6) };
+        var mockIm = new MockInputManager();
+        var mockCtrl = new MockControllerService();
+
+        var mainVm = new MainViewModel(mockWm, mockIm, mockCtrl);
+        mainVm.Initialize();
+
+        Assert.Equal(0, mainVm.SelectedIndex);
+
+        // PageRight jumps forward by more than one window
+        mainVm.Navigate(NavigationDirection.PageRight);
         Assert.Equal(3, mainVm.SelectedIndex);
 
-        // Left from index 3 -> index 0
-        mainVm.Navigate(NavigationDirection.Left);
+        // PageRight wraps around
+        mainVm.Navigate(NavigationDirection.PageRight);
         Assert.Equal(0, mainVm.SelectedIndex);
+
+        // PageLeft wraps backwards
+        mainVm.Navigate(NavigationDirection.PageLeft);
+        Assert.Equal(3, mainVm.SelectedIndex);
+    }
+
+    [Fact]
+    public void MainViewModel_CarouselTiles_ReflectLeftCenterRightNeighbors()
+    {
+        var mockWm = new MockWindowManager { Windows = CreateSampleWindows(3) };
+        var mockIm = new MockInputManager();
+        var mockCtrl = new MockControllerService();
+
+        var mainVm = new MainViewModel(mockWm, mockIm, mockCtrl);
+        mainVm.Initialize();
+
+        Assert.Equal("Application 1", mainVm.CenterTile?.Title);
+        Assert.Equal("Application 3", mainVm.LeftTile?.Title);
+        Assert.Equal("Application 2", mainVm.RightTile?.Title);
+
+        mainVm.Navigate(NavigationDirection.Right);
+
+        Assert.Equal("Application 2", mainVm.CenterTile?.Title);
+        Assert.Equal("Application 1", mainVm.LeftTile?.Title);
+        Assert.Equal("Application 3", mainVm.RightTile?.Title);
+    }
+
+    [Fact]
+    public void MainViewModel_CarouselTiles_AreNull_WhenFewerThanTwoWindows()
+    {
+        var mockWm = new MockWindowManager { Windows = CreateSampleWindows(1) };
+        var mockIm = new MockInputManager();
+        var mockCtrl = new MockControllerService();
+
+        var mainVm = new MainViewModel(mockWm, mockIm, mockCtrl);
+        mainVm.Initialize();
+
+        Assert.NotNull(mainVm.CenterTile);
+        Assert.Null(mainVm.LeftTile);
+        Assert.Null(mainVm.RightTile);
+    }
+
+    [Fact]
+    public void MainViewModel_CarouselTiles_WithExactlyTwoWindows_OnlyPopulatesRightTile()
+    {
+        var mockWm = new MockWindowManager { Windows = CreateSampleWindows(2) };
+        var mockIm = new MockInputManager();
+        var mockCtrl = new MockControllerService();
+
+        var mainVm = new MainViewModel(mockWm, mockIm, mockCtrl);
+        mainVm.Initialize();
+
+        // With only 2 windows, GetTileAtOffset(-1) and GetTileAtOffset(1) would both resolve
+        // to the same other window. LeftTile must be suppressed (null) so the same
+        // WindowTileViewModel instance is never bound to two visible carousel slots at once.
+        Assert.Equal("Application 1", mainVm.CenterTile?.Title);
+        Assert.Null(mainVm.LeftTile);
+        Assert.Equal("Application 2", mainVm.RightTile?.Title);
+
+        mainVm.Navigate(NavigationDirection.Right);
+
+        Assert.Equal("Application 2", mainVm.CenterTile?.Title);
+        Assert.Null(mainVm.LeftTile);
+        Assert.Equal("Application 1", mainVm.RightTile?.Title);
     }
 
     [Fact]

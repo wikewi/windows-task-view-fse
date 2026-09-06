@@ -10,19 +10,19 @@ namespace WindowsTaskViewFSE.ViewModels;
 public class MainViewModel : ViewModelBase, IDisposable
 {
     /// <summary>
-    /// Number of columns skipped by a single LB/RB (PageLeft/PageRight) press, so paging feels
-    /// like jumping a "screen width" of tiles rather than moving one column at a time.
+    /// Number of windows skipped by a single LB/RB (PageLeft/PageRight) press, so paging feels
+    /// like a fast scrub through the carousel rather than moving one window at a time.
     /// </summary>
-    private const int PageJumpColumnMultiplier = 2;
+    private const int PageJumpSize = 3;
 
     private readonly IWindowManager _windowManager;
     private readonly IInputManager _inputManager;
     private readonly IControllerInputService _controllerService;
+    private readonly IThumbnailProvider? _thumbnailProvider;
     private readonly DispatcherTimer _clockTimer;
 
     private WindowTileViewModel? _selectedWindow;
     private int _selectedIndex = -1;
-    private int _rowsCount = 2;
     private string _searchQuery = string.Empty;
     private string _headerTime = string.Empty;
     private string _statusMessage = string.Empty;
@@ -60,6 +60,9 @@ public class MainViewModel : ViewModelBase, IDisposable
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(SelectedIndex));
                 OnPropertyChanged(nameof(HasSelectedWindow));
+                OnPropertyChanged(nameof(CenterTile));
+                OnPropertyChanged(nameof(LeftTile));
+                OnPropertyChanged(nameof(RightTile));
             }
         }
     }
@@ -83,14 +86,30 @@ public class MainViewModel : ViewModelBase, IDisposable
     public bool HasSelectedWindow => SelectedWindow != null;
 
     /// <summary>
-    /// Number of rows displayed in the horizontally scrolling tile carousel.
-    /// Tiles flow top-to-bottom within a column before wrapping to the next column (column-major order),
-    /// matching the Xbox FSE horizontal grid layout.
+    /// The currently focused/active window, shown large in the center of the 3-window carousel.
     /// </summary>
-    public int RowsCount
+    public WindowTileViewModel? CenterTile => SelectedWindow;
+
+    /// <summary>
+    /// The window shown to the left of center (previous window in the circular carousel).
+    /// Null when there are fewer than 3 windows open (with exactly 2 windows, the other
+    /// window is shown only on the right to avoid the same tile appearing on both sides).
+    /// </summary>
+    public WindowTileViewModel? LeftTile => FilteredWindows.Count >= 3 ? GetTileAtOffset(-1) : null;
+
+    /// <summary>
+    /// The window shown to the right of center (next window in the circular carousel).
+    /// Null when there are fewer than 2 windows open.
+    /// </summary>
+    public WindowTileViewModel? RightTile => GetTileAtOffset(1);
+
+    private WindowTileViewModel? GetTileAtOffset(int offset)
     {
-        get => _rowsCount;
-        set => SetProperty(ref _rowsCount, Math.Max(1, value));
+        int count = FilteredWindows.Count;
+        if (count <= 1 || SelectedIndex < 0) return null;
+
+        int idx = ((SelectedIndex + offset) % count + count) % count;
+        return FilteredWindows[idx];
     }
 
     public string SearchQuery
@@ -135,11 +154,13 @@ public class MainViewModel : ViewModelBase, IDisposable
     public MainViewModel(
         IWindowManager windowManager,
         IInputManager inputManager,
-        IControllerInputService controllerService)
+        IControllerInputService controllerService,
+        IThumbnailProvider? thumbnailProvider = null)
     {
         _windowManager = windowManager ?? throw new ArgumentNullException(nameof(windowManager));
         _inputManager = inputManager ?? throw new ArgumentNullException(nameof(inputManager));
         _controllerService = controllerService ?? throw new ArgumentNullException(nameof(controllerService));
+        _thumbnailProvider = thumbnailProvider;
 
         NavigateCommand = new RelayCommand<object>(param =>
         {
@@ -212,7 +233,8 @@ public class MainViewModel : ViewModelBase, IDisposable
             var tile = new WindowTileViewModel(
                 win,
                 onSelect: tileVm => SelectTile(tileVm),
-                onClose: tileVm => CloseTile(tileVm))
+                onClose: tileVm => CloseTile(tileVm),
+                thumbnailProvider: _thumbnailProvider)
             {
                 Index = index++
             };
@@ -231,56 +253,28 @@ public class MainViewModel : ViewModelBase, IDisposable
         if (current < 0) current = 0;
 
         int count = FilteredWindows.Count;
-        int rows = RowsCount;
         int next = current;
 
         switch (direction)
         {
+            // The carousel is a single circular row of windows: Up/Left move to the previous
+            // window, Down/Right move to the next one (matching D-Pad Left/Right and Up/Down).
             case NavigationDirection.Up:
+            case NavigationDirection.Left:
                 next = (current - 1 + count) % count;
                 break;
 
             case NavigationDirection.Down:
+            case NavigationDirection.Right:
                 next = (current + 1) % count;
                 break;
 
-            case NavigationDirection.Left:
-                if (current - rows >= 0)
-                {
-                    next = current - rows;
-                }
-                else
-                {
-                    // Wrap to the last column in the same row. Note: when the tile count isn't
-                    // an exact multiple of RowsCount, the final column is only partially filled;
-                    // the fallback below clamps to the last valid index in that case so the
-                    // selection never lands out of bounds (it may not always be in the exact
-                    // same visual row, which is an acceptable trade-off for a ragged last column).
-                    int target = current + (count / rows) * rows;
-                    if (target >= count) target -= rows;
-                    next = (target >= 0 && target < count) ? target : (count - 1);
-                }
-                break;
-
-            case NavigationDirection.Right:
-                if (current + rows < count)
-                {
-                    next = current + rows;
-                }
-                else
-                {
-                    // Wrap to the first column in the same row
-                    next = current % rows;
-                    if (next >= count) next = 0;
-                }
-                break;
-
             case NavigationDirection.PageLeft:
-                next = Math.Max(0, current - rows * PageJumpColumnMultiplier);
+                next = ((current - PageJumpSize) % count + count) % count;
                 break;
 
             case NavigationDirection.PageRight:
-                next = Math.Min(count - 1, current + rows * PageJumpColumnMultiplier);
+                next = (current + PageJumpSize) % count;
                 break;
 
             case NavigationDirection.Select:
@@ -350,6 +344,11 @@ public class MainViewModel : ViewModelBase, IDisposable
         {
             SelectedWindow = null;
         }
+
+        // The removal can shift which windows sit to the left/right of the current selection
+        // even when SelectedWindow itself doesn't change, so always refresh the side tiles.
+        OnPropertyChanged(nameof(LeftTile));
+        OnPropertyChanged(nameof(RightTile));
 
         StatusMessage = $"{FilteredWindows.Count} app{(FilteredWindows.Count == 1 ? "" : "s")} running";
     }

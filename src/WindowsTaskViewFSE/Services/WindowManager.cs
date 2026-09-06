@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -18,9 +19,11 @@ public class WindowManager : IWindowManager, IDisposable
     private IntPtr _winEventHook = IntPtr.Zero;
     private NativeInterop.WinEventDelegate? _winEventDelegate;
     private bool _isMonitoring;
+    private readonly object _knownHandlesLock = new();
     private readonly HashSet<IntPtr> _knownHandles = new();
-    private readonly Dictionary<IntPtr, ImageSource?> _thumbnailCache = new();
-    private readonly Dictionary<IntPtr, ImageSource?> _iconCache = new();
+    private readonly ConcurrentDictionary<IntPtr, ImageSource?> _thumbnailCache = new();
+    private readonly ConcurrentDictionary<IntPtr, ImageSource?> _iconCache = new();
+    private readonly object _dirtyThumbnailLock = new();
     private readonly HashSet<IntPtr> _dirtyThumbnailHandles = new();
 
     public event EventHandler? WindowsChanged;
@@ -204,7 +207,7 @@ public class WindowManager : IWindowManager, IDisposable
     {
         if (idObject != 0 || hwnd == IntPtr.Zero) return;
 
-        lock (_dirtyThumbnailHandles)
+        lock (_dirtyThumbnailLock)
         {
             _dirtyThumbnailHandles.Add(hwnd);
         }
@@ -217,15 +220,52 @@ public class WindowManager : IWindowManager, IDisposable
 
     private void OnPollTick(object? sender, EventArgs e)
     {
-        var currentWindows = GetOpenWindows();
-        var currentHandles = new HashSet<IntPtr>(currentWindows.Select(w => w.Handle));
-
-        if (!currentHandles.SetEquals(_knownHandles))
+        // Detect handle changes on a background thread using a lightweight enumeration
+        // (no thumbnail/icon capture) so the poll never blocks the UI thread. The full,
+        // thumbnail-bearing enumeration only runs when WindowsChanged actually fires.
+        _ = Task.Run(() =>
         {
-            _knownHandles.Clear();
-            foreach (var h in currentHandles) _knownHandles.Add(h);
-            WindowsChanged?.Invoke(this, EventArgs.Empty);
+            var currentHandles = new HashSet<IntPtr>(EnumerateValidWindowHandles());
+            bool changed;
+
+            lock (_knownHandlesLock)
+            {
+                changed = !currentHandles.SetEquals(_knownHandles);
+                if (changed)
+                {
+                    _knownHandles.Clear();
+                    foreach (var h in currentHandles) _knownHandles.Add(h);
+                }
+            }
+
+            if (changed)
+            {
+                Application.Current?.Dispatcher?.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+                {
+                    WindowsChanged?.Invoke(this, EventArgs.Empty);
+                }));
+            }
+        });
+    }
+
+    private List<IntPtr> EnumerateValidWindowHandles()
+    {
+        var handles = new List<IntPtr>();
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return handles;
         }
+
+        NativeInterop.EnumWindows((hWnd, lParam) =>
+        {
+            if (IsValidAppWindow(hWnd))
+            {
+                handles.Add(hWnd);
+            }
+            return true;
+        }, IntPtr.Zero);
+
+        return handles;
     }
 
     private bool IsValidAppWindow(IntPtr hWnd)
@@ -348,7 +388,9 @@ public class WindowManager : IWindowManager, IDisposable
     /// </summary>
     private ImageSource? GetOrCreateIcon(IntPtr hWnd, string executablePath)
     {
-        if (_iconCache.TryGetValue(hWnd, out var cachedIcon) && cachedIcon != null)
+        // Presence of the key (even with a null value) means extraction was already attempted,
+        // so a persistently-null icon is not retried on every poll.
+        if (_iconCache.TryGetValue(hWnd, out var cachedIcon))
         {
             return cachedIcon;
         }
@@ -366,7 +408,7 @@ public class WindowManager : IWindowManager, IDisposable
     private ImageSource? GetOrCreateThumbnail(IntPtr hWnd, bool isActive)
     {
         bool isDirty;
-        lock (_dirtyThumbnailHandles)
+        lock (_dirtyThumbnailLock)
         {
             isDirty = _dirtyThumbnailHandles.Remove(hWnd);
         }
@@ -389,15 +431,15 @@ public class WindowManager : IWindowManager, IDisposable
 
         foreach (var stale in _thumbnailCache.Keys.Where(h => !current.Contains(h)).ToList())
         {
-            _thumbnailCache.Remove(stale);
+            _thumbnailCache.TryRemove(stale, out _);
         }
 
         foreach (var stale in _iconCache.Keys.Where(h => !current.Contains(h)).ToList())
         {
-            _iconCache.Remove(stale);
+            _iconCache.TryRemove(stale, out _);
         }
 
-        lock (_dirtyThumbnailHandles)
+        lock (_dirtyThumbnailLock)
         {
             _dirtyThumbnailHandles.RemoveWhere(h => !current.Contains(h));
         }

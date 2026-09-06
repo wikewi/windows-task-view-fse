@@ -9,6 +9,12 @@ namespace WindowsTaskViewFSE.ViewModels;
 
 public class MainViewModel : ViewModelBase, IDisposable
 {
+    /// <summary>
+    /// Number of columns skipped by a single LB/RB (PageLeft/PageRight) press, so paging feels
+    /// like jumping a "screen width" of tiles rather than moving one column at a time.
+    /// </summary>
+    private const int PageJumpColumnMultiplier = 2;
+
     private readonly IWindowManager _windowManager;
     private readonly IInputManager _inputManager;
     private readonly IControllerInputService _controllerService;
@@ -186,7 +192,18 @@ public class MainViewModel : ViewModelBase, IDisposable
     {
         IntPtr previousSelectedHwnd = SelectedWindow?.Handle ?? IntPtr.Zero;
 
-        var rawWindows = await _windowManager.GetOpenWindowsAsync().ConfigureAwait(true);
+        IReadOnlyList<WindowInfo> rawWindows;
+        try
+        {
+            rawWindows = await _windowManager.GetOpenWindowsAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MainViewModel] Failed to enumerate windows: {ex.Message}");
+            StatusMessage = "Unable to refresh open apps.";
+            return;
+        }
+
         Windows.Clear();
 
         int index = 0;
@@ -255,11 +272,11 @@ public class MainViewModel : ViewModelBase, IDisposable
                 break;
 
             case NavigationDirection.PageLeft:
-                next = Math.Max(0, current - rows * 2);
+                next = Math.Max(0, current - rows * PageJumpColumnMultiplier);
                 break;
 
             case NavigationDirection.PageRight:
-                next = Math.Min(count - 1, current + rows * 2);
+                next = Math.Min(count - 1, current + rows * PageJumpColumnMultiplier);
                 break;
 
             case NavigationDirection.Select:

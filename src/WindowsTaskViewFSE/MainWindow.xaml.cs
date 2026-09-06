@@ -18,9 +18,8 @@ public partial class MainWindow : Window
         var windowManager = new WindowManager(thumbnailProvider);
         var controllerService = new ControllerInputService();
         var inputManager = new Services.InputManager(controllerService);
-        var soundService = new SoundService();
 
-        _viewModel = new MainViewModel(windowManager, inputManager, soundService, controllerService);
+        _viewModel = new MainViewModel(windowManager, inputManager, controllerService);
         DataContext = _viewModel;
 
         _viewModel.RequestClose += OnRequestClose;
@@ -51,23 +50,23 @@ public partial class MainWindow : Window
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         _viewModel.Initialize();
-        UpdateColumnsCount();
+        UpdateRowsCount();
         Focus();
     }
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e)
     {
-        UpdateColumnsCount();
+        UpdateRowsCount();
     }
 
-    private void UpdateColumnsCount()
+    private void UpdateRowsCount()
     {
-        // Each tile is 380px wide + 28px margin = ~408px
-        double availableWidth = ActualWidth - 80;
-        if (availableWidth > 0)
+        // Each tile is 336px tall + 24px total margin = 360px per row.
+        double availableHeight = ActualHeight - 220;
+        if (availableHeight > 0)
         {
-            int cols = Math.Max(1, (int)(availableWidth / 410));
-            _viewModel.ColumnsCount = cols;
+            int rows = Math.Max(1, (int)(availableHeight / 360));
+            _viewModel.RowsCount = rows;
         }
     }
 

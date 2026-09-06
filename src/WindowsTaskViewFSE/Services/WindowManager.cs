@@ -3,6 +3,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
+using System.Windows.Media;
 using System.Windows.Threading;
 using WindowsTaskViewFSE.Helpers;
 using WindowsTaskViewFSE.Models;
@@ -18,6 +19,9 @@ public class WindowManager : IWindowManager, IDisposable
     private NativeInterop.WinEventDelegate? _winEventDelegate;
     private bool _isMonitoring;
     private readonly HashSet<IntPtr> _knownHandles = new();
+    private readonly Dictionary<IntPtr, ImageSource?> _thumbnailCache = new();
+    private readonly Dictionary<IntPtr, ImageSource?> _iconCache = new();
+    private readonly HashSet<IntPtr> _dirtyThumbnailHandles = new();
 
     public event EventHandler? WindowsChanged;
 
@@ -57,7 +61,18 @@ public class WindowManager : IWindowManager, IDisposable
             return true;
         }, IntPtr.Zero);
 
+        PruneStaleCacheEntries(windows.Select(w => w.Handle));
+
         return windows;
+    }
+
+    /// <summary>
+    /// Enumerates open windows off the UI thread so the caller (e.g. the main view model)
+    /// stays responsive while thumbnails are captured and process metadata is resolved.
+    /// </summary>
+    public Task<IReadOnlyList<WindowInfo>> GetOpenWindowsAsync()
+    {
+        return Task.Run(GetOpenWindows);
     }
 
     public bool SwitchToWindow(IntPtr handle)
@@ -189,6 +204,11 @@ public class WindowManager : IWindowManager, IDisposable
     {
         if (idObject != 0 || hwnd == IntPtr.Zero) return;
 
+        lock (_dirtyThumbnailHandles)
+        {
+            _dirtyThumbnailHandles.Add(hwnd);
+        }
+
         Application.Current?.Dispatcher?.BeginInvoke(DispatcherPriority.Background, new Action(() =>
         {
             WindowsChanged?.Invoke(this, EventArgs.Empty);
@@ -295,8 +315,8 @@ public class WindowManager : IWindowManager, IDisposable
             bool isMaximized = NativeInterop.IsZoomed(hWnd);
             bool isActive = hWnd == foregroundHwnd;
 
-            var icon = _thumbnailProvider.ExtractWindowIcon(hWnd, executablePath);
-            var thumbnail = _thumbnailProvider.CaptureWindowThumbnail(hWnd, 480, 270);
+            var icon = GetOrCreateIcon(hWnd, executablePath);
+            var thumbnail = GetOrCreateThumbnail(hWnd, isActive);
 
             return new WindowInfo
             {
@@ -319,6 +339,67 @@ public class WindowManager : IWindowManager, IDisposable
         {
             Debug.WriteLine($"[WindowManager] Error creating WindowInfo for {hWnd}: {ex.Message}");
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Returns the cached window icon if available, otherwise extracts and caches it.
+    /// Icons rarely change for the lifetime of a window, so they are cached indefinitely per handle.
+    /// </summary>
+    private ImageSource? GetOrCreateIcon(IntPtr hWnd, string executablePath)
+    {
+        if (_iconCache.TryGetValue(hWnd, out var cachedIcon) && cachedIcon != null)
+        {
+            return cachedIcon;
+        }
+
+        var icon = _thumbnailProvider.ExtractWindowIcon(hWnd, executablePath);
+        _iconCache[hWnd] = icon;
+        return icon;
+    }
+
+    /// <summary>
+    /// Returns the cached thumbnail for a window unless it is missing, dirty (window content changed),
+    /// or currently the active/foreground window (which is refreshed on every poll to stay accurate).
+    /// This avoids the costly PrintWindow/BitBlt capture for every window on every poll tick.
+    /// </summary>
+    private ImageSource? GetOrCreateThumbnail(IntPtr hWnd, bool isActive)
+    {
+        bool isDirty;
+        lock (_dirtyThumbnailHandles)
+        {
+            isDirty = _dirtyThumbnailHandles.Remove(hWnd);
+        }
+
+        bool hasCached = _thumbnailCache.TryGetValue(hWnd, out var cachedThumbnail) && cachedThumbnail != null;
+
+        if (hasCached && !isDirty && !isActive)
+        {
+            return cachedThumbnail;
+        }
+
+        var thumbnail = _thumbnailProvider.CaptureWindowThumbnail(hWnd, 480, 270);
+        _thumbnailCache[hWnd] = thumbnail;
+        return thumbnail;
+    }
+
+    private void PruneStaleCacheEntries(IEnumerable<IntPtr> currentHandles)
+    {
+        var current = new HashSet<IntPtr>(currentHandles);
+
+        foreach (var stale in _thumbnailCache.Keys.Where(h => !current.Contains(h)).ToList())
+        {
+            _thumbnailCache.Remove(stale);
+        }
+
+        foreach (var stale in _iconCache.Keys.Where(h => !current.Contains(h)).ToList())
+        {
+            _iconCache.Remove(stale);
+        }
+
+        lock (_dirtyThumbnailHandles)
+        {
+            _dirtyThumbnailHandles.RemoveWhere(h => !current.Contains(h));
         }
     }
 

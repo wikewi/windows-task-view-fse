@@ -5,6 +5,7 @@ namespace WindowsTaskViewFSE.Services;
 public interface IWindowManager
 {
     IReadOnlyList<WindowInfo> GetOpenWindows();
+    Task<IReadOnlyList<WindowInfo>> GetOpenWindowsAsync();
     bool SwitchToWindow(IntPtr handle);
     bool CloseWindow(IntPtr handle);
     bool MinimizeWindow(IntPtr handle);
